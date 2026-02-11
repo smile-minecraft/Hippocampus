@@ -1,0 +1,28 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "useDefineForClassFields": true,
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "jsx": "preserve",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "esModuleInterop": true,
+        "lib": [
+            "ESNext",
+            "DOM"
+        ],
+        "skipLibCheck": true,
+        "noEmit": true
+    },
+    "include": [
+        "env.d.ts",
+        "docs/**/*",
+        "docs/**/*.vue",
+        "docs/.vitepress/**/*"
+    ],
+    "exclude": [
+        "node_modules"
+    ]
+}

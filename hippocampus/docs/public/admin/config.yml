@@ -1,0 +1,24 @@
+backend:
+  name: git-gateway
+  branch: main # Branch to update (optional; defaults to master)
+
+media_folder: "docs/public/assets"
+public_folder: "/assets"
+
+collections:
+  - name: "subjects"
+    label: "Subjects"
+    folder: "docs/parasitology"
+    create: true
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Body", name: "body", widget: "markdown" }
+      - { label: "Quiz Data", name: "quizzes", widget: "list", required: false, fields: [
+          { label: "ID", name: "id", widget: "string" },
+          { label: "Question", name: "question", widget: "string" },
+          { label: "Options", name: "options", widget: "list", field: { widget: "string" } },
+          { label: "Answer Index", name: "answer", widget: "number", value_type: "int" },
+          { label: "Explanation", name: "explanation", widget: "markdown" }
+        ]
+      }
