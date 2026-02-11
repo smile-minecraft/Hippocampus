@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// --- Core Models ---
+
+// 題目 (The central piece)
+model Question {
+  id          String   @id @default(uuid())
+  content     String   // The question text (Markdown supported)
+  options     String   // Stored as JSON string: ["(A)...", "(B)..."]
+  answerIndex Int      // 0=A, 1=B, 2=C, 3=D, -1=Unknown
+  explanation String?  // Detailed explanation
+  difficulty  Int      @default(1) // 1 (Easy) to 5 (Hard)
+
+  // Relations
+  tags        Tag[]
+  attempts    Attempt[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 標籤 (For RAG & Knowledge Graph)
+model Tag {
+  id        String   @id @default(uuid())
+  name      String   @unique // e.g., "Embryology"
+  slug      String   @unique // e.g., "embryology"
+  category  String   @default("AI_GENERATED") // e.g., "YEAR", "TOPIC"
+
+  questions Question[]
+}
+
+// --- User Data ---
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String?
+  role      String    @default("USER")
+  attempts  Attempt[]
+  createdAt DateTime  @default(now())
+}
+
+// 刷題紀錄 (For Spaced Repetition)
+model Attempt {
+  id         String   @id @default(uuid())
+  userId     String
+  questionId String
+  isCorrect  Boolean
+  userAnswer Int
+  timestamp  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  question   Question @relation(fields: [questionId], references: [id])
+}

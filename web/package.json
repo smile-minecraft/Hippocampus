@@ -9,7 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.4.0",
     "@radix-ui/react-slot": "^1.2.4",
+    "better-sqlite3": "^12.6.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -21,13 +23,19 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "^7.4.0",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.19.33",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.2.4",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "prisma": "^7.4.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }
