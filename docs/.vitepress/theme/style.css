@@ -1,0 +1,74 @@
+/* 核心變數：粉藍漸層與毛玻璃 */
+:root {
+  /* 品牌色改為粉藍漸層 */
+  --vp-c-brand-1: #60a5fa; /* Blue */
+  --vp-c-brand-2: #f472b6; /* Pink */
+  --vp-c-brand-3: #a78bfa; /* Purple */
+  
+  /* 背景與玻璃效果 */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+  --glass-blur: blur(20px);
+}
+
+/* 全域背景：流動的粉藍漸層 */
+body {
+  background: linear-gradient(135deg, #e0f2fe 0%, #fce7f3 50%, #ede9fe 100%);
+  background-attachment: fixed; /* 讓背景固定，內容滑動 */
+  min-height: 100vh;
+}
+
+/* 導覽列 (Navbar) - 懸浮毛玻璃 */
+.VPNav {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+/* 側邊欄 (Sidebar) - 玻璃面板 */
+.VPSidebar {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--glass-border);
+}
+
+/* 內容區塊 - 卡片化設計 */
+.VPContent {
+  /* 讓內容區塊像一張浮在背景上的卡片 */
+  max-width: 1200px;
+  margin: 20px auto;
+  border-radius: 24px;
+}
+
+/* 針對文件頁面的背景處理 */
+.vp-doc {
+  background-color: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  padding: 40px;
+  border-radius: 20px;
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+}
+
+/* 調整 QuizCard 樣式以配合新主題 */
+.quiz-card {
+  background: rgba(255, 255, 255, 0.8) !important; /* 更不透明一點以利閱讀 */
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  backdrop-filter: none; /* 避免雙重模糊 */
+}
+
+/* 暗色模式適配 (Dark Mode) - 變成深海玻璃風格 */
+.dark body {
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+}
+.dark .VPNav, .dark .VPSidebar, .dark .vp-doc {
+  background-color: rgba(30, 41, 59, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.dark .quiz-card {
+  background: rgba(30, 41, 59, 0.8) !important;
+}

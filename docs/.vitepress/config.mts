@@ -24,7 +24,7 @@ export default withPwa(defineConfig({
       name: 'Hippocampus Wiki',
       short_name: 'Hippocampus',
       description: 'Medical Exam Prep',
-      theme_color: '#3eaf7c',
+      theme_color: '#f472b6',
       icons: [
         {
           src: 'pwa-192x192.png',

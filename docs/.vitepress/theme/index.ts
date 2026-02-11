@@ -1,4 +1,5 @@
 import DefaultTheme from 'vitepress/theme'
+import './style.css'
 import QuizCard from '../../components/QuizCard.vue'
 import ReviewList from '../../components/ReviewList.vue'
 import mediumZoom from 'medium-zoom'
