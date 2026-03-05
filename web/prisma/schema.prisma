@@ -1,60 +1,300 @@
+// =============================================================================
+// Hippocampus — PostgreSQL Schema (Prisma 6)
+// SDD-compliant: pgvector, RBAC, soft-delete, cascade rules, spaced repetition
+// =============================================================================
+
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "sqlite"
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
 }
 
-// --- Core Models ---
+// =============================================================================
+// ENUMS
+// =============================================================================
 
-// 題目 (The central piece)
-model Question {
-  id          String   @id @default(uuid())
-  content     String   // The question text (Markdown supported)
-  options     String   // Stored as JSON string: ["(A)...", "(B)..."]
-  answerIndex Int      // 0=A, 1=B, 2=C, 3=D, -1=Unknown
-  explanation String?  // Detailed explanation
-  difficulty  Int      @default(1) // 1 (Easy) to 5 (Hard)
-
-  // Relations
-  tags        Tag[]
-  attempts    Attempt[]
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
 }
 
-// 標籤 (For RAG & Knowledge Graph)
-model Tag {
-  id        String   @id @default(uuid())
-  name      String   @unique // e.g., "Embryology"
-  slug      String   @unique // e.g., "embryology"
-  category  String   @default("AI_GENERATED") // e.g., "YEAR", "TOPIC"
-
-  questions Question[]
+enum ArticleStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  ARCHIVED
 }
 
-// --- User Data ---
+enum TagDimension {
+  SUBJECT    // 基礎學科：解剖學、生理學、病理學…
+  SYSTEM     // 臨床系統：心血管、神經、消化…
+  SOURCE     // 題目來源：特定年份考卷
+  META       // 題型與狀態：常考題、圖片題、計算題
+}
+
+enum TargetType {
+  WIKI_ARTICLE
+  QUESTION
+}
+
+enum EditStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum IntegrationProvider {
+  NOTION
+}
+
+// =============================================================================
+// USERS & RBAC
+// =============================================================================
 
 model User {
-  id        String    @id @default(uuid())
-  email     String    @unique
-  name      String?
-  role      String    @default("USER")
-  attempts  Attempt[]
-  createdAt DateTime  @default(now())
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String?
+  passwordHash String    @default("") // bcrypt hash; empty string = SSO-only account
+  role         Role      @default(USER)
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime? // 軟刪除
+
+  // Relations
+  wikiArticles       WikiArticle[]
+  questionRecords    UserQuestionRecord[]
+  comments           Comment[]
+  editRequestsBy     EditRequest[]        @relation("ProposerRelation")
+  editRequestsReview EditRequest[]        @relation("ReviewerRelation")
+  integrations       UserIntegration[]
+
+  @@index([email])
 }
 
-// 刷題紀錄 (For Spaced Repetition)
-model Attempt {
-  id         String   @id @default(uuid())
-  userId     String
-  questionId String
-  isCorrect  Boolean
-  userAnswer Int
-  timestamp  DateTime @default(now())
+// =============================================================================
+// WIKI ARTICLES — 共筆知識庫
+// =============================================================================
 
-  user       User     @relation(fields: [userId], references: [id])
-  question   Question @relation(fields: [questionId], references: [id])
+model WikiArticle {
+  id        String        @id @default(uuid()) @db.Uuid
+  title     String
+  content   String        // Markdown，圖片以 CDN URL 嵌入
+  status    ArticleStatus @default(DRAFT)
+  authorId  String        @db.Uuid
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?     // 軟刪除
+
+  // pgvector: text-embedding-004 output dim = 1536
+  // INDEX 在 migration raw SQL 中以 HNSW 建立
+  embedding Unsupported("vector(1536)")?
+
+  // Relations
+  author    User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  tags      WikiTag[]
+  questions Question[]
+  comments  Comment[]
+  edits     EditRequest[]
+
+  @@index([status, deletedAt])
+  @@index([authorId])
+}
+
+// =============================================================================
+// QUESTIONS — 考古題庫
+// =============================================================================
+
+model Question {
+  id          String    @id @default(uuid()) @db.Uuid
+  year        Int?
+  examType    String?   // e.g., "國考", "校內期末"
+  stem        String    // 題幹 Markdown
+  options     Json      // JSONB: { "A": "...", "B": "...", "C": "...", "D": "..." }
+  answer      String    // 正確答案 key，e.g., "A"
+  explanation String?   // 詳解 Markdown
+  imageUrls   String[]  // CDN URLs 供前端預載
+  difficulty  Int       @default(1) // 1-5
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // 軟刪除
+
+  // pgvector embedding
+  embedding Unsupported("vector(1536)")?
+
+  // FK to WikiArticle (雙向聯動)
+  wikiArticleId String?  @db.Uuid
+  wikiArticle   WikiArticle? @relation(fields: [wikiArticleId], references: [id], onDelete: SetNull)
+
+  // Relations
+  tags    QuestionTag[]
+  records UserQuestionRecord[]
+  comments Comment[]
+  edits    EditRequest[]
+
+  @@index([year, examType])
+  @@index([wikiArticleId])
+  @@index([deletedAt])
+}
+
+// =============================================================================
+// TAGS — 多維度標籤系統
+// =============================================================================
+
+model Tag {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String
+  dimension TagDimension
+
+  questions QuestionTag[]
+  articles  WikiTag[]
+
+  @@unique([slug, dimension])
+  @@index([dimension])
+}
+
+// Join table: Question ↔ Tag
+model QuestionTag {
+  questionId String   @db.Uuid
+  tagId      String   @db.Uuid
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, tagId])
+}
+
+// Join table: WikiArticle ↔ Tag
+model WikiTag {
+  wikiArticleId String      @db.Uuid
+  tagId         String      @db.Uuid
+  wikiArticle   WikiArticle @relation(fields: [wikiArticleId], references: [id], onDelete: Cascade)
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([wikiArticleId, tagId])
+}
+
+// =============================================================================
+// USER QUESTION RECORDS — 刷題紀錄 (Spaced Repetition Foundation)
+// =============================================================================
+
+model UserQuestionRecord {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  questionId   String    @db.Uuid
+  userAnswer   String    // 使用者選擇的 key
+  isCorrect    Boolean
+  // FSRS / SM-2 相關欄位
+  easeFactor   Float     @default(2.5)  // 難度係數
+  interval     Int       @default(0)    // 下次複習間隔（天）
+  repetitions  Int       @default(0)    // 連續正確次數
+  nextReviewAt DateTime  @default(now()) // 下次複習時間
+  answeredAt   DateTime  @default(now())
+  deletedAt    DateTime? // 軟刪除，保護歷史作答完整性
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@index([userId, nextReviewAt])
+  @@index([userId, questionId])
+}
+
+// =============================================================================
+// COMMENTS — 留言互動（多態）
+// =============================================================================
+
+model Comment {
+  id         String     @id @default(uuid()) @db.Uuid
+  authorId   String     @db.Uuid
+  content    String
+  targetType TargetType
+  // 多態關聯：指向 WikiArticle 或 Question
+  wikiArticleId String?    @db.Uuid
+  questionId    String?    @db.Uuid
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  wikiArticle WikiArticle? @relation(fields: [wikiArticleId], references: [id], onDelete: Cascade)
+  question    Question?    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([targetType, wikiArticleId])
+  @@index([targetType, questionId])
+}
+
+// =============================================================================
+// EDIT REQUESTS — 使用者修改提案
+// =============================================================================
+
+model EditRequest {
+  id         String     @id @default(uuid()) @db.Uuid
+  proposerId String     @db.Uuid
+  reviewerId String?    @db.Uuid
+  targetType TargetType
+  patchJson  Json       // 差異內容（JSON Patch RFC 6902 格式）
+  status     EditStatus @default(PENDING)
+  note       String?    // 審核意見
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  // 多態關聯
+  wikiArticleId String?     @db.Uuid
+  questionId    String?     @db.Uuid
+
+  proposer    User         @relation("ProposerRelation", fields: [proposerId], references: [id], onDelete: Restrict)
+  reviewer    User?        @relation("ReviewerRelation", fields: [reviewerId], references: [id], onDelete: SetNull)
+  wikiArticle WikiArticle? @relation(fields: [wikiArticleId], references: [id], onDelete: Cascade)
+  question    Question?    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([proposerId])
+}
+
+// =============================================================================
+// USER INTEGRATIONS — 第三方存取權杖 (e.g., Notion)
+// =============================================================================
+
+model UserIntegration {
+  id                   String              @id @default(uuid()) @db.Uuid
+  userId               String              @db.Uuid
+  provider             IntegrationProvider
+  accessTokenEncrypted String              // AES-256 加密後儲存
+  metadata             Json?               // Notion workspace ID 等額外資訊
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+}
+
+// =============================================================================
+// PARSED DRAFTS — AI 解析草稿暫存（等待人工審核）
+// =============================================================================
+
+enum DraftStatus {
+  PROCESSING
+  AWAITING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model ParsedDraft {
+  id          String      @id @default(uuid()) @db.Uuid
+  jobId       String      @unique // BullMQ Job ID
+  originalUrl String      // MinIO raw file URL
+  draftJson   Json        // Gemini 輸出的結構化草稿陣列
+  status      DraftStatus @default(PROCESSING)
+  errorLog    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([status])
+  @@index([jobId])
 }

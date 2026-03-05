@@ -1,0 +1,159 @@
+version: "3.9"
+
+# =============================================================================
+# Hippocampus — Local Development Infrastructure
+# Services: PostgreSQL 15 + pgvector | Redis 7 | MinIO
+# Usage: docker compose up -d
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 15 with pgvector extension
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: hippocampus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hippocampus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-hippocampus}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hippocampus} -d ${POSTGRES_DB:-hippocampus}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 — BullMQ Job Queue
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: hippocampus-redis
+    restart: unless-stopped
+    command: >
+      redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # MinIO — S3-compatible Object Storage
+  # Console: http://localhost:9001  (user: minioadmin / minioadmin)
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: hippocampus-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # MinIO bucket init (one-shot setup container)
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: hippocampus-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+        mc mb --ignore-existing local/hippocampus-raw;
+        mc mb --ignore-existing local/hippocampus-assets;
+        mc anonymous set download local/hippocampus-assets;
+        echo 'MinIO buckets initialized.';
+      "
+    networks:
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # Next.js Web Application
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: ./web
+    container_name: hippocampus-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: ./web/.env.example
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hippocampus}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-hippocampus}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+    command: "npm run start"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # BullMQ Worker Node
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ./web
+    container_name: hippocampus-worker
+    restart: unless-stopped
+    env_file: ./web/.env.example
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hippocampus}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-hippocampus}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+    command: "npm run worker"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - hippocampus-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+
+networks:
+  hippocampus-net:
+    driver: bridge

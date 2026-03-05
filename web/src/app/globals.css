@@ -1,26 +1,176 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Typography Variables */
+  --font-sans: var(--font-noto-sans-tc), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+
+  /* Semantic Colors - Base mapped from variables */
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface: var(--bg-surface);
+
+  --color-text-base: var(--text-base);
+  --color-text-muted: var(--text-muted);
+
+  --color-primary-base: var(--primary-base);
+  --color-primary-hover: var(--primary-hover);
+
+  --color-secondary-base: var(--secondary-base);
+
+  --color-cta-base: var(--cta-base);
+  --color-cta-hover: var(--cta-hover);
+
+  --color-border-base: var(--border-base);
+
+  /* Shadows for Spatial Elevation */
+  --shadow-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-elevation-2: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-elevation-3: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: Arial, Helvetica, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* --- Light Mode Palette --- */
+    --bg-base: #F8FAFC;
+    /* Slate 50 - Softer reading context */
+    --bg-surface: #FFFFFF;
+
+    --text-base: #0F172A;
+    /* Slate 900 - High contrast text */
+    --text-muted: #475569;
+    /* Slate 600 */
+
+    --primary-base: #0891B2;
+    /* Teal 600 */
+    --primary-hover: #0E7490;
+    /* Teal 700 */
+
+    --secondary-base: #06B6D4;
+    /* Cyan 500 */
+
+    /* CTA: Deepened Emerald for >4.5:1 WCAG AAA contrast against white text */
+    --cta-base: #059669;
+    /* Emerald 600 */
+    --cta-hover: #047857;
+    /* Emerald 700 */
+
+    --border-base: #E2E8F0;
+    /* Slate 200 */
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      /* --- Dark Mode Palette --- */
+      --bg-base: #020617;
+      /* Slate 950 */
+      --bg-surface: #0F172A;
+      /* Slate 900 */
+
+      --text-base: #F8FAFC;
+      /* Slate 50 */
+      --text-muted: #94A3B8;
+      /* Slate 400 */
+
+      --primary-base: #2DD4BF;
+      /* Teal 400 */
+      --primary-hover: #14B8A6;
+      /* Teal 500 */
+
+      --secondary-base: #67E8F9;
+      /* Cyan 300 */
+
+      --cta-base: #10B981;
+      /* Emerald 500 */
+      --cta-hover: #059669;
+      /* Emerald 600 */
+
+      --border-base: #1E293B;
+      /* Slate 800 */
+    }
+  }
+
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-base);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* ─── Buttons ──────────────────────────────────────────────────────────── */
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-heading font-semibold text-white bg-cta-base border border-transparent cursor-pointer;
+    /* GPU Accelerated animations strictly using opacity/transform */
+    transition: opacity 250ms ease, transform 250ms ease, background-color 250ms ease;
+    will-change: transform, opacity;
+  }
+
+  .btn-primary:hover {
+    @apply bg-cta-hover;
+    transform: translateY(-1px);
+    opacity: 0.95;
+  }
+
+  .btn-primary:focus-visible {
+    /* 3-4px high-contrast focus rings for accessibility */
+    @apply outline-none ring-4 ring-cta-base/50 ring-offset-2 ring-offset-bg-base;
+  }
+
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-heading font-semibold text-primary-base bg-transparent border-2 border-primary-base cursor-pointer;
+    transition: background-color 250ms ease, transform 250ms ease;
+    will-change: transform;
+  }
+
+  .btn-secondary:hover {
+    @apply bg-primary-base/10;
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary:focus-visible {
+    @apply outline-none ring-4 ring-primary-base/50 ring-offset-2 ring-offset-bg-base;
+  }
+
+  .btn-secondary:active {
+    transform: translateY(0);
+  }
+
+  /* ─── Cards & Spatial Elevation ────────────────────────────────────────── */
+
+  .card {
+    /* Diffuse shadows and 1px border for explicit depth boundary */
+    @apply bg-bg-surface border border-border-base rounded-2xl shadow-elevation-1;
+    transition: transform 300ms ease, box-shadow 300ms ease, border-color 300ms ease;
+    will-change: transform, box-shadow;
+  }
+
+  .card-hoverable {
+    @apply cursor-pointer;
+  }
+
+  .card-hoverable:hover {
+    @apply shadow-elevation-3 border-primary-base/30;
+    transform: translateY(-2px);
+  }
+
+  .card-hoverable:focus-visible {
+    @apply outline-none ring-4 ring-primary-base/50 ring-offset-2 ring-offset-bg-base;
+  }
+
+  /* ─── Inputs ───────────────────────────────────────────────────────────── */
+
+  .input {
+    @apply w-full px-4 py-3 bg-bg-surface border border-border-base rounded-xl text-text-base placeholder-text-muted;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+
+  .input:focus {
+    @apply outline-none border-primary-base ring-4 ring-primary-base/20;
+  }
 }
