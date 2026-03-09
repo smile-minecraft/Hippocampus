@@ -70,7 +70,6 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
             s.revealAnswer()
             // Fire-and-forget attempt recording
             if (currentQuestion) {
-                const isCorrect = s.selectedOption === currentQuestion.answerIndex
                 const mappedAnswer = ["A", "B", "C", "D"][s.selectedOption] as "A" | "B" | "C" | "D"
                 void submitAttempt({
                     questionId: currentQuestion.id,
@@ -115,7 +114,12 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
         )
     }
 
-    const options: string[] = JSON.parse(currentQuestion.options as unknown as string)
+    const optionsObj = typeof currentQuestion.options === 'string'
+        ? JSON.parse(currentQuestion.options as any)
+        : currentQuestion.options;
+
+    // Convert Record<string, string> to array of values in order (A, B, C, D)
+    const options: string[] = Object.keys(optionsObj).sort().map(k => optionsObj[k]);
 
     // ---------------------------------------------------------------------------
     // JSX
@@ -165,7 +169,7 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
                         className="text-text-base text-lg leading-relaxed font-medium"
                         aria-label="題目"
                     >
-                        {currentQuestion.content}
+                        {currentQuestion.stem}
                     </p>
 
                     {/* Options */}
@@ -176,7 +180,7 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
                                 index={i}
                                 label={label}
                                 isSelected={state.selectedOption === i}
-                                isCorrect={i === currentQuestion.answerIndex}
+                                isCorrect={['A', 'B', 'C', 'D'][i] === currentQuestion.answer}
                                 isRevealed={state.isRevealed}
                                 onSelect={handleSelect}
                             />
@@ -186,7 +190,7 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
                     {/* Explanation */}
                     <ExplanationPanel
                         isRevealed={state.isRevealed}
-                        isCorrect={state.selectedOption === currentQuestion.answerIndex}
+                        isCorrect={['A', 'B', 'C', 'D'][state.selectedOption ?? 0] === currentQuestion.answer}
                         explanation={currentQuestion.explanation}
                     />
 

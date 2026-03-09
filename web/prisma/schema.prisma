@@ -32,10 +32,10 @@ enum ArticleStatus {
 }
 
 enum TagDimension {
-  SUBJECT    // 基礎學科：解剖學、生理學、病理學…
-  SYSTEM     // 臨床系統：心血管、神經、消化…
-  SOURCE     // 題目來源：特定年份考卷
-  META       // 題型與狀態：常考題、圖片題、計算題
+  ACADEMIC     // 基礎學科：解剖、生理、微免
+  ORGAN        // 人體器官：心血管、消化、神經
+  EXAM_CATEGORY// 考試類別：醫師一階、醫師二階、牙醫
+  META         // 通用狀態：高頻考點、爭議題、最新年度
 }
 
 enum TargetType {
@@ -149,14 +149,15 @@ model Question {
 model Tag {
   id        String       @id @default(uuid()) @db.Uuid
   name      String
-  slug      String
+  slug      String       @unique
   dimension TagDimension
+  groupName String?      // 分組字串 (e.g., "寄生蟲", "消化系統")
 
   questions QuestionTag[]
   articles  WikiTag[]
 
-  @@unique([slug, dimension])
-  @@index([dimension])
+  @@unique([dimension, groupName, name])
+  @@index([dimension, groupName])
 }
 
 // Join table: Question ↔ Tag
@@ -286,14 +287,16 @@ enum DraftStatus {
 }
 
 model ParsedDraft {
-  id          String      @id @default(uuid()) @db.Uuid
-  jobId       String      @unique // BullMQ Job ID
-  originalUrl String      // MinIO raw file URL
-  draftJson   Json        // Gemini 輸出的結構化草稿陣列
-  status      DraftStatus @default(PROCESSING)
-  errorLog    String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id               String      @id @default(uuid()) @db.Uuid
+  jobId            String      @unique // BullMQ Job ID
+  originalUrl      String      // MinIO raw file URL
+  originalFilename String?     // 使用者上傳時的原始檔名
+  draftJson        Json        // Gemini 輸出的結構化草稿陣列
+  status           DraftStatus @default(PROCESSING)
+  errorLog         String?
+  geminiMeta       Json?       // AI 呼叫元資料：耗時、Token 用量、嘗試次數、finishReason 等
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   @@index([status])
   @@index([jobId])

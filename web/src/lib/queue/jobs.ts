@@ -13,7 +13,7 @@ import { redisConnection } from "./client";
 // Queue name constants
 // ---------------------------------------------------------------------------
 export const QUEUE_NAMES = {
-    PARSER: "hippocampus:parser",
+    PARSER: "hippocampus-parser",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ export const ParseDocumentJobSchema = z.object({
     /** Original filename for user-facing display */
     originalFilename: z.string().min(1),
     /** Approx file size in bytes — used to estimate processing time */
-    fileSizeBytes: z.number().int().positive(),
+    fileSizeBytes: z.number().int().nonnegative(),
 });
 
 export type ParseDocumentJobData = z.infer<typeof ParseDocumentJobSchema>;

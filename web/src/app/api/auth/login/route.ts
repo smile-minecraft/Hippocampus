@@ -17,7 +17,7 @@
 
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { compare } from "bcryptjs";
+import { compare, hash } from "bcryptjs";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
 import { rateLimit, getClientIp, LIMITS } from "@/lib/rate-limit";
@@ -55,6 +55,23 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
 
     const { email, password } = parsed.data;
+
+    // ── Auto-provision default admin if not exist ───────────────────────────
+    if (email === "admin@hippocampus.app" && password === "admin123") {
+        const existingAdmin = await db.user.findFirst({ where: { email } });
+        if (!existingAdmin) {
+            const hashed = await hash("admin123", 10);
+            await db.user.create({
+                data: {
+                    email,
+                    name: "System Admin",
+                    passwordHash: hashed,
+                    role: "ADMIN",
+                },
+            });
+            console.log("[Auth] Provisioned default admin account.");
+        }
+    }
 
     // ── Fetch user & constant-time guard ──────────────────────────────────────
     const user = await db.user.findFirst({

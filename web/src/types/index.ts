@@ -14,14 +14,23 @@ export interface Tag {
     name: string
     slug: string
     category: string
+    dimension?: 'SUBJECT' | 'SYSTEM' | 'SOURCE' | 'META'
+}
+
+export interface TagsResponse {
+    tags: Tag[]
+    grouped: Record<'SUBJECT' | 'SYSTEM' | 'SOURCE' | 'META', Tag[]>
 }
 
 export interface Question {
     id: string
-    content: string        // Markdown-formatted question body
-    options: string[]      // Parsed from stored JSON string: ["(A)...", ..."]
-    answerIndex: number    // 0=A, 1=B, 2=C, 3=D, -1=Unknown
+    year: number | null
+    examType: string | null
+    stem: string           // Markdown-formatted question body
+    options: Record<string, string> // Parsed from stored JSON object: { "A": "...", "B": "..." }
+    answer: string         // Correct answer key, e.g., "A"
     explanation: string | null
+    imageUrls: string[]
     difficulty: 1 | 2 | 3 | 4 | 5
     tags: Tag[]
     createdAt: string      // ISO 8601
@@ -82,6 +91,10 @@ export interface UploadBindPayload {
     objectKey: string     // MinIO key returned after successful PUT
     questionId: string    // Target question to bind the image to
     placeholder: string   // e.g. "[需要手動截圖_1]" placeholder to replace
+}
+
+export interface ParserJobResponsePayload {
+    jobId: string;
 }
 
 // ---------------------------------------------------------------------------

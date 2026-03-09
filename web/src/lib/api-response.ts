@@ -25,24 +25,21 @@ export type ApiErrorCode =
 // ─── Response Types ──────────────────────────────────────────────────────────
 
 interface SuccessEnvelope<T> {
-    success: true;
+    ok: true;
     data: T;
 }
 
 interface ErrorEnvelope {
-    success: false;
-    error: {
-        code: ApiErrorCode;
-        message: string;
-        /** Field-level human-readable error messages (Zod only) */
-        fields?: Record<string, string>;
-    };
+    ok: false;
+    code: ApiErrorCode;
+    message: string;
+    fields?: Record<string, string>;
 }
 
 // ─── Factory Helpers ─────────────────────────────────────────────────────────
 
 export function ok<T>(data: T, status = 200): NextResponse<SuccessEnvelope<T>> {
-    return NextResponse.json({ success: true, data }, { status });
+    return NextResponse.json({ ok: true, data }, { status });
 }
 
 export function created<T>(data: T): NextResponse<SuccessEnvelope<T>> {
@@ -56,7 +53,7 @@ export function err(
     fields?: Record<string, string>
 ): NextResponse<ErrorEnvelope> {
     return NextResponse.json(
-        { success: false, error: { code, message, ...(fields ? { fields } : {}) } },
+        { ok: false, code, message, ...(fields ? { fields } : {}) },
         { status }
     );
 }

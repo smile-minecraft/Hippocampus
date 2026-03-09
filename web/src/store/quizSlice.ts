@@ -66,7 +66,8 @@ export const createQuizSlice = () =>
                 const q = currentQuestion()
                 if (!q) return
 
-                const isCorrect = selectedOption === q.answerIndex
+                const mappedAnswers = ["A", "B", "C", "D"];
+                const isCorrect = mappedAnswers[selectedOption] === q.answer;
                 set({
                     isRevealed: true,
                     sessionStats: {

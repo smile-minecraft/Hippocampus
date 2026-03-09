@@ -69,6 +69,7 @@ function ThemeApplicator() {
 
         root.setAttribute('data-theme', resolvedTheme)
         root.classList.toggle('dark', resolvedTheme === 'dark')
+        root.classList.toggle('light', resolvedTheme === 'light')
     }, [theme])
 
     return null

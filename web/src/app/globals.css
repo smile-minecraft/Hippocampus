@@ -58,35 +58,33 @@
     /* Slate 200 */
   }
 
+  /* Dark mode: supports both OS preference AND manual .dark class toggle */
   @media (prefers-color-scheme: dark) {
-    :root {
-      /* --- Dark Mode Palette --- */
+    :root:not(.light) {
       --bg-base: #020617;
-      /* Slate 950 */
       --bg-surface: #0F172A;
-      /* Slate 900 */
-
       --text-base: #F8FAFC;
-      /* Slate 50 */
       --text-muted: #94A3B8;
-      /* Slate 400 */
-
       --primary-base: #2DD4BF;
-      /* Teal 400 */
       --primary-hover: #14B8A6;
-      /* Teal 500 */
-
       --secondary-base: #67E8F9;
-      /* Cyan 300 */
-
       --cta-base: #10B981;
-      /* Emerald 500 */
       --cta-hover: #059669;
-      /* Emerald 600 */
-
       --border-base: #1E293B;
-      /* Slate 800 */
     }
+  }
+
+  :root.dark {
+    --bg-base: #020617;
+    --bg-surface: #0F172A;
+    --text-base: #F8FAFC;
+    --text-muted: #94A3B8;
+    --primary-base: #2DD4BF;
+    --primary-hover: #14B8A6;
+    --secondary-base: #67E8F9;
+    --cta-base: #10B981;
+    --cta-hover: #059669;
+    --border-base: #1E293B;
   }
 
   body {

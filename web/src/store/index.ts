@@ -12,3 +12,18 @@ export type { QuizSlice } from './quizSlice'
 
 export { useUIStore } from './uiSlice'
 export type { UISlice, Theme } from './uiSlice'
+
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { createUploadSlice, type UploadSlice } from './uploadSlice'
+
+export const useUploadStore = create<UploadSlice>()(
+    persist(
+        (...a) => createUploadSlice(...a),
+        {
+            name: 'hippocampus-upload-storage',
+            // Only persist the jobs array
+            partialize: (state) => ({ jobs: state.jobs }),
+        }
+    )
+)

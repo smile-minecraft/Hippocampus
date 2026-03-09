@@ -37,6 +37,7 @@ const PUBLIC_PREFIXES = [
     "/api/auth/",        // register, login, refresh, logout
     "/api/questions",    // read-only browse is public
     "/api/tags",         // tag listing is public
+    "/api/parser",       // temp public for testing parser upload
 ];
 
 // ─── Route Matcher ────────────────────────────────────────────────────────────

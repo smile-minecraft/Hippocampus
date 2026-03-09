@@ -114,9 +114,13 @@ export async function uploadStream(
 ): Promise<string> {
     await withExponentialRetry(
         () =>
-            minioClient.putObject(bucket, objectKey, stream, contentLength, {
-                "Content-Type": contentType,
-            }),
+            contentLength >= 0
+                ? minioClient.putObject(bucket, objectKey, stream, contentLength, {
+                    "Content-Type": contentType,
+                })
+                : (minioClient as any).putObject(bucket, objectKey, stream, {
+                    "Content-Type": contentType,
+                }),
         { label: `uploadStream:${objectKey}` }
     );
 
@@ -143,6 +147,19 @@ export async function uploadFile(
     );
 
     return buildPublicUrl(bucket, objectKey);
+}
+
+// ---------------------------------------------------------------------------
+// Delete Object
+// ---------------------------------------------------------------------------
+export async function deleteObject(
+    bucket: string,
+    objectKey: string
+): Promise<void> {
+    await withExponentialRetry(
+        () => minioClient.removeObject(bucket, objectKey),
+        { label: `deleteObject:${objectKey}` }
+    );
 }
 
 // ---------------------------------------------------------------------------

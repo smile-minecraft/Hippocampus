@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 
-const DIMENSION_VALUES = ["SUBJECT", "SYSTEM", "SOURCE", "META"] as const;
+const DIMENSION_VALUES = ["ACADEMIC", "ORGAN", "EXAM_CATEGORY", "META"] as const;
 
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
@@ -111,6 +111,7 @@ export const CreateTagSchema = z.object({
         .max(100)
         .regex(/^[a-z0-9-]+$/, "Slug 只允許小寫字母、數字和連字號"),
     dimension: z.enum(DIMENSION_VALUES),
+    groupName: z.string().max(100).optional().nullable(),
 });
 
 // ─── Admin Users ───────────────────────────────────────────────────────────
@@ -143,6 +144,10 @@ export const PresignUploadSchema = z.object({
 export const BindUploadSchema = z.object({
     questionId: z.string().uuid("必須提供有效的題目 UUID"),
     fileKey: z.string().min(1, "File Key 不可為空"),
+});
+
+export const ParserUploadSchema = z.object({
+    docType: z.enum(["word", "pdf"]),
 });
 
 // ─── Type Exports ──────────────────────────────────────────────────────────

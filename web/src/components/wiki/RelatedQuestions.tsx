@@ -78,7 +78,8 @@ function RelatedQuestionsInner({ slug }: { slug: string }) {
     return (
         <ul className="space-y-2 px-2" aria-label="關聯考古題">
             {questions.map((q) => {
-                const options: string[] = JSON.parse(q.options as unknown as string)
+                const optionsObj = typeof q.options === 'string' ? JSON.parse(q.options as any) : q.options;
+                const options: string[] = Object.keys(optionsObj).sort().map(k => optionsObj[k]);
                 return (
                     <li
                         key={q.id}
@@ -88,7 +89,7 @@ function RelatedQuestionsInner({ slug }: { slug: string }) {
                         )}
                     >
                         <p className="text-xs text-zinc-300 leading-snug line-clamp-3 font-medium">
-                            {q.content}
+                            {q.stem}
                         </p>
                         <div className="flex flex-wrap gap-1">
                             {options.slice(0, 2).map((opt, i) => (

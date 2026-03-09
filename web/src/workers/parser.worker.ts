@@ -14,7 +14,7 @@
  *
  * Resilience:
  *   - PDF subprocess timeout: 60 s hard limit + SIGKILL fallback
- *   - BullMQ lockDuration: 90 s to cover worst-case large PDF
+ *   - BullMQ lockDuration: 300 s to cover worst-case large PDF
  *   - All uploads streaming (zero-copy) via MinIO SDK
  *   - ParsedDraft.errorLog captures failure details for admin review
  */
@@ -50,7 +50,55 @@ const activeSubprocesses = new Set<ChildProcess>();
 // Concurrency & lock configuration
 // ---------------------------------------------------------------------------
 const WORKER_CONCURRENCY = 3;
-const LOCK_DURATION_MS = 90_000; // 90 s — must exceed worst-case PDF processing time
+const LOCK_DURATION_MS = 300_000; // 300 s — must exceed worst-case Gemini timeout (600s) + retry delays
+
+// ---------------------------------------------------------------------------
+// Terminal progress bar renderer
+// ---------------------------------------------------------------------------
+const BAR_WIDTH = 30;
+const COLORS = {
+    reset: "\x1b[0m",
+    green: "\x1b[32m",
+    cyan: "\x1b[36m",
+    dim: "\x1b[2m",
+    bold: "\x1b[1m",
+    yellow: "\x1b[33m",
+    red: "\x1b[31m",
+    bgGreen: "\x1b[42m",
+    bgWhite: "\x1b[47m",
+};
+
+/**
+ * Single source of truth for progress — writes to BOTH terminal and BullMQ.
+ * Frontend polls BullMQ; operator reads terminal. Data is always identical.
+ */
+async function reportProgress(
+    job: Job<ParseDocumentJobData>,
+    percent: number,
+    message: string,
+): Promise<void> {
+    // 1. Write to BullMQ (frontend reads this via status API)
+    await job.updateProgress({ percent, message });
+
+    // 2. Render visual progress bar in terminal
+    const filled = Math.round((percent / 100) * BAR_WIDTH);
+    const empty = BAR_WIDTH - filled;
+    const bar = `${COLORS.bgGreen}${" ".repeat(filled)}${COLORS.reset}${COLORS.dim}${"░".repeat(empty)}${COLORS.reset}`;
+    const pctStr = `${String(percent).padStart(3)}%`;
+    const jobShort = job.id?.slice(0, 8) ?? "????????";
+    const timestamp = new Date().toLocaleTimeString("zh-TW", { hour12: false });
+
+    // Use single-line overwrite for active jobs (carriage return)
+    const line = `${COLORS.dim}${timestamp}${COLORS.reset} ${COLORS.cyan}[${jobShort}]${COLORS.reset} ${bar} ${COLORS.bold}${pctStr}${COLORS.reset} ${message}`;
+
+    if (percent >= 100) {
+        // Final state — print on a new line so it persists in scroll-back
+        process.stdout.write(`\n${line}\n`);
+    } else {
+        // Overwrite the current line for a cleaner look
+        process.stdout.write(`\r\x1b[K${line}`);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Main job processor
@@ -59,50 +107,77 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
     const { traceId, docType, s3Key, originalFilename } = job.data;
     const tmpDir = path.join(tmpdir(), `parser-${traceId}`);
 
+    console.log(`\n${COLORS.bold}${COLORS.cyan}┌─ Job ${job.id}${COLORS.reset}`);
+    console.log(`${COLORS.cyan}│${COLORS.reset} traceId  : ${traceId}`);
+    console.log(`${COLORS.cyan}│${COLORS.reset} file     : ${originalFilename ?? s3Key}`);
+    console.log(`${COLORS.cyan}│${COLORS.reset} type     : ${docType}`);
+    console.log(`${COLORS.cyan}└───────────────${COLORS.reset}`);
+
     // Update draft status to PROCESSING
-    await db.parsedDraft.update({
+    // Using upsert for maximum resilience against race conditions or missing records.
+    await db.parsedDraft.upsert({
         where: { jobId: job.id! },
-        data: { status: "PROCESSING" },
+        update: { status: "PROCESSING" },
+        create: {
+            jobId: job.id!,
+            originalUrl: s3Key,
+            draftJson: [],
+            status: "PROCESSING",
+        },
     });
 
     try {
         await mkdir(tmpDir, { recursive: true });
-        await job.updateProgress(5);
+        await reportProgress(job, 5, '正在準備暫存目錄與檔案解碼...');
 
-        let imageUrls: string[];
+        let imageDataParts: Array<{ type: "base64"; mimeType: string; data: string }>;
 
         if (docType === "word") {
-            imageUrls = await processWordDocument(job, s3Key, traceId, tmpDir);
+            imageDataParts = await processWordDocument(job, s3Key, traceId, tmpDir);
         } else {
-            imageUrls = await processPdfDocument(job, s3Key, traceId, tmpDir);
+            imageDataParts = await processPdfDocument(job, s3Key, traceId, tmpDir);
         }
 
-        await job.updateProgress(60);
+        await reportProgress(job, 60, `圖片轉換完成 (${imageDataParts.length} 張)，正在送入 AI 模型`);
 
-        // --- Gemini extraction ---
-        const imageParts = imageUrls.map((url) => ({
-            type: "url" as const,
-            url,
-        }));
+        // --- Gemini extraction with progress callback ---
+        const { data: extraction, meta: geminiMeta } = await extractQuestionsFromImages(
+            imageDataParts,
+            traceId,
+            (msg) => {
+                // Fire-and-forget progress update during AI processing
+                reportProgress(job, 70, msg).catch(() => { });
+            }
+        );
 
-        const extraction = await extractQuestionsFromImages(imageParts, traceId);
-        await job.updateProgress(90);
+        await reportProgress(job, 90, `AI 萃取完成：${extraction.questions.length} 道題目，正在寫入資料庫`);
 
-        // --- Persist draft (AWAITING_REVIEW) ---
-        await db.parsedDraft.update({
+        // --- Persist draft + AI metadata (AWAITING_REVIEW) ---
+        await db.parsedDraft.upsert({
             where: { jobId: job.id! },
-            data: {
+            update: {
                 draftJson: extraction as object,
                 status: "AWAITING_REVIEW",
+                geminiMeta: geminiMeta as object,
+            },
+            create: {
+                jobId: job.id!,
+                originalUrl: s3Key,
+                draftJson: extraction as object,
+                status: "AWAITING_REVIEW",
+                geminiMeta: geminiMeta as object,
             },
         });
 
-        await job.updateProgress(100);
+        await reportProgress(job, 100, '✅ 全部完成，等待人工審核');
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const stack = err instanceof Error ? err.stack : undefined;
 
-        // Structured failure log
+        // Terminal failure output
+        process.stdout.write(`\r\x1b[K${COLORS.red}❌ [${job.id?.slice(0, 8)}] FAILED: ${message}${COLORS.reset}\n`);
+
+        // Structured failure log (JSON for log aggregation)
         console.error(
             JSON.stringify({
                 level: "error",
@@ -115,10 +190,17 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
             })
         );
 
-        // Persist error for admin visibility (not a silent failure)
-        await db.parsedDraft.update({
+        // Persist error for admin visibility (not a silent failure) — also use upsert
+        await db.parsedDraft.upsert({
             where: { jobId: job.id! },
-            data: {
+            update: {
+                status: "REJECTED",
+                errorLog: `[traceId=${traceId}] ${message}`,
+            },
+            create: {
+                jobId: job.id!,
+                originalUrl: s3Key,
+                draftJson: [],
                 status: "REJECTED",
                 errorLog: `[traceId=${traceId}] ${message}`,
             },
@@ -141,7 +223,7 @@ async function processWordDocument(
     s3Key: string,
     traceId: string,
     tmpDir: string
-): Promise<string[]> {
+): Promise<Array<{ type: "base64"; mimeType: string; data: string }>> {
     // Download Word file from MinIO raw bucket to tmp
     const rawStream = await downloadStream(BUCKETS.RAW, s3Key);
     const tmpWordPath = path.join(tmpDir, "input.docx");
@@ -149,7 +231,7 @@ async function processWordDocument(
     await streamPipeline(rawStream, createWriteStream(tmpWordPath));
     await job.updateProgress(20);
 
-    const imageUrls: string[] = [];
+    const imageParts: Array<{ type: "base64"; mimeType: string; data: string }> = [];
     let imageIndex = 0;
 
     // mammoth extracts images via callback — we stream each to MinIO
@@ -170,7 +252,12 @@ async function processWordDocument(
                     buffer.length,
                     image.contentType
                 );
-                imageUrls.push(url);
+
+                imageParts.push({
+                    type: "base64",
+                    mimeType: image.contentType,
+                    data: buffer.toString("base64"),
+                });
 
                 // Return the CDN URL for embedding in the HTML
                 return { src: url };
@@ -183,7 +270,7 @@ async function processWordDocument(
     // Store the HTML as a page "image" representation via Gemini text input
     // (For Word docs we pass page screenshots or rely on Gemini's text mode)
     // Simplified: return extracted image URLs for downstream Gemini call
-    return imageUrls;
+    return imageParts;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,18 +281,21 @@ async function processPdfDocument(
     s3Key: string,
     traceId: string,
     tmpDir: string
-): Promise<string[]> {
+): Promise<Array<{ type: "base64"; mimeType: string; data: string }>> {
     // Download PDF from MinIO to tmp
     const rawStream = await downloadStream(BUCKETS.RAW, s3Key);
     const tmpPdfPath = path.join(tmpDir, "input.pdf");
 
     await streamPipeline(rawStream, createWriteStream(tmpPdfPath));
-    await job.updateProgress(15);
+    const startMsg = "正在提取高解析度圖片，大檔轉換可能費時數分鐘，請稍候...";
+    console.log(`\n    [15%] ⏱  ${startMsg}`);
+    await job.updateProgress({ percent: 15, message: startMsg });
 
     // Rasterize PDF to PNGs via pdftoppm (part of Poppler)
     // Each page becomes: {tmpDir}/page-NNNN.png
     await rasterizePdf(tmpPdfPath, path.join(tmpDir, "page"), traceId);
-    await job.updateProgress(40);
+    console.log(`    [40%] ✅  圖片轉換成功！正在準備上傳至儲存庫...`);
+    await job.updateProgress({ percent: 40, message: "圖片轉換成功！正在準備上傳至儲存庫..." });
 
     // Find all generated PNG files
     const pngFiles = (await readdir(tmpDir))
@@ -217,7 +307,9 @@ async function processPdfDocument(
     }
 
     // Upload each PNG to MinIO assets bucket (fPutObject — streams internally)
-    const imageUrls: string[] = [];
+    const fs = require('node:fs');
+    const imageParts: Array<{ type: "base64"; mimeType: string; data: string }> = [];
+
     for (const pngFile of pngFiles) {
         const localPath = path.join(tmpDir, pngFile);
         const objectKey = `pdf/${traceId}/${pngFile}`;
@@ -229,11 +321,16 @@ async function processPdfDocument(
             "image/png"
         );
 
-        imageUrls.push(url);
+        const buffer = fs.readFileSync(localPath);
+        imageParts.push({
+            type: "base64",
+            mimeType: "image/png",
+            data: buffer.toString("base64"),
+        });
     }
 
     await job.updateProgress(55);
-    return imageUrls;
+    return imageParts;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +352,7 @@ async function rasterizePdf(
                 outputPrefix,
             ],
             {
-                timeout: 60_000,            // 60 s hard wall-clock timeout
+                timeout: 300_000,           // 300 s (5 mins) wall-clock timeout for large PDFs
                 killSignal: "SIGKILL",      // Ensure zombie cannot linger after SIGTERM
             }
         );
