@@ -6,11 +6,14 @@ import { useQuizKeyboard } from './useQuizKeyboard'
 import { OptionButton } from './OptionButton'
 import { ExplanationPanel } from './ExplanationPanel'
 import { Button } from '@/components/ui/Button'
+import { LatexText } from '@/components/ui/LatexText'
 import { createQuizSlice } from '@/store/quizSlice'
+import type { QuestionResult } from '@/store/quizSlice'
 import { submitAttempt } from '@/lib/apiClient'
+import { log } from '@/lib/logger'
 import type { Question } from '@/types'
-import { cn } from '@/lib/cn'
-import { ChevronRight, SkipForward } from 'lucide-react'
+import { ChevronRight, SkipForward, RotateCcw, ChevronDown, ChevronUp, CheckCircle2, XCircle, MinusCircle } from 'lucide-react'
+import Image from 'next/image'
 
 interface QuizCardProps {
     initialQuestions: Question[]
@@ -33,25 +36,27 @@ interface QuizCardProps {
  */
 export function QuizCard({ initialQuestions }: QuizCardProps) {
     // Local session store — not exported to global Zustand
-    const storeRef = useRef(createQuizSlice())
+    // Using useState instead of useRef to avoid ref-during-render lint violations.
+    // The store is created once via the initializer function and never changes.
+    const [store] = useState(() => createQuizSlice())
 
-    // Subscribe only to the fields we need (prevents full re-render on other changes)
-    const sessionQuestions = storeRef.current.getState().sessionQuestions
-    const [state, setState] = useState(() => storeRef.current.getState())
+    const [state, setState] = useState(() => store.getState())
 
     // Re-sync local state on store changes — subscribe on mount, unsubscribe on unmount
     useEffect(() => {
-        return storeRef.current.subscribe((s) => setState({ ...s }))
-    }, [])
+        return store.subscribe((s) => setState({ ...s }))
+    }, [store])
 
     const [isAnimating, setIsAnimating] = useState(false)
 
     // Initialize session once on mount
     const didInit = useRef(false)
-    if (!didInit.current && initialQuestions.length > 0) {
-        storeRef.current.getState().resetSession(initialQuestions)
-        didInit.current = true
-    }
+    useEffect(() => {
+        if (!didInit.current && initialQuestions.length > 0) {
+            store.getState().resetSession(initialQuestions)
+            didInit.current = true
+        }
+    }, [initialQuestions, store])
 
     const currentQuestion = state.sessionQuestions[state.currentIndex]
     const totalCount = state.sessionQuestions.length
@@ -61,31 +66,30 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
     // ---------------------------------------------------------------------------
 
     const handleSelect = useCallback((index: number) => {
-        storeRef.current.getState().selectOption(index)
-    }, [])
+        store.getState().selectOption(index)
+    }, [store])
 
     const handleRevealOrNext = useCallback(() => {
-        const s = storeRef.current.getState()
+        const s = store.getState()
         if (!s.isRevealed && s.selectedOption !== null) {
             s.revealAnswer()
             // Fire-and-forget attempt recording
             if (currentQuestion) {
-                const mappedAnswer = ["A", "B", "C", "D"][s.selectedOption] as "A" | "B" | "C" | "D"
                 void submitAttempt({
                     questionId: currentQuestion.id,
-                    userAnswer: mappedAnswer,
+                    userAnswer: s.selectedOption,  // numeric 0-3 matches server schema
                 }).catch((err) => {
-                    console.warn('[QuizCard] submitAttempt failed (non-blocking):', err)
+                    log.warn('quiz', 'submitAttempt failed (non-blocking)', { error: err instanceof Error ? err.message : String(err) })
                 })
             }
         } else if (s.isRevealed) {
             s.nextQuestion()
         }
-    }, [currentQuestion])
+    }, [currentQuestion, store])
 
     const handleSkip = useCallback(() => {
-        storeRef.current.getState().skipQuestion()
-    }, [])
+        store.getState().skipQuestion()
+    }, [store])
 
     // ---------------------------------------------------------------------------
     // Keyboard shortcuts
@@ -99,23 +103,22 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
     })
 
     // ---------------------------------------------------------------------------
-    // Render guard
+    // Render guard — end of session
     // ---------------------------------------------------------------------------
 
     if (!currentQuestion) {
         return (
-            <div className="text-center py-20 text-text-muted space-y-2">
-                <p className="text-4xl">🎉</p>
-                <p className="text-lg font-heading font-medium text-text-base">本輪題目已完成！</p>
-                <p className="text-sm">
-                    答對 {state.sessionStats.correct} / 跳過 {state.sessionStats.skipped} / 答錯 {state.sessionStats.wrong}
-                </p>
-            </div>
+            <SessionReview
+                stats={state.sessionStats}
+                results={state.questionResults}
+                questions={state.sessionQuestions}
+                onRestart={() => store.getState().resetSession(state.sessionQuestions)}
+            />
         )
     }
 
     const optionsObj = typeof currentQuestion.options === 'string'
-        ? JSON.parse(currentQuestion.options as any)
+        ? (JSON.parse(currentQuestion.options) as Record<string, string>)
         : currentQuestion.options;
 
     // Convert Record<string, string> to array of values in order (A, B, C, D)
@@ -165,12 +168,29 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
                     </div>
 
                     {/* Question body */}
-                    <p
-                        className="text-text-base text-lg leading-relaxed font-medium"
-                        aria-label="題目"
-                    >
-                        {currentQuestion.stem}
-                    </p>
+                    <div aria-label="題目" className="space-y-3">
+                        <LatexText className="text-text-base text-lg leading-relaxed font-medium">
+                            {currentQuestion.stem}
+                        </LatexText>
+
+                        {/* Question images */}
+                        {currentQuestion.imageUrls?.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {currentQuestion.imageUrls.map((url, i) => (
+                                    <Image
+                                        key={i}
+                                        src={url}
+                                        alt={`題目圖片 ${i + 1}`}
+                                        width={600}
+                                        height={400}
+                                        className="max-w-full rounded-lg border border-border-base object-contain max-h-64"
+                                        loading="lazy"
+                                        unoptimized
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
 
                     {/* Options */}
                     <div role="radiogroup" aria-label="選項" className="space-y-2.5">
@@ -219,6 +239,223 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
                     </div>
                 </motion.div>
             </AnimatePresence>
+        </div>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// SessionReview — detailed end-of-session review
+// ---------------------------------------------------------------------------
+
+const LETTERS = ['A', 'B', 'C', 'D'] as const
+
+interface SessionReviewProps {
+    stats: { correct: number; wrong: number; skipped: number }
+    results: QuestionResult[]
+    questions: Question[]
+    onRestart: () => void
+}
+
+function SessionReview({ stats, results, questions, onRestart }: SessionReviewProps) {
+    const [expandedId, setExpandedId] = useState<string | null>(null)
+    const [filter, setFilter] = useState<'all' | 'wrong' | 'skipped'>('all')
+
+    const total = stats.correct + stats.wrong + stats.skipped
+    const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0
+
+    const questionsMap = new Map(questions.map(q => [q.id, q]))
+
+    const filteredResults = results.filter(r => {
+        if (filter === 'wrong') return r.isCorrect === false
+        if (filter === 'skipped') return r.isCorrect === null
+        return true
+    })
+
+    return (
+        <div className="max-w-2xl mx-auto space-y-6">
+            {/* Summary card */}
+            <div className="card p-6 space-y-4 text-center">
+                <p className="text-4xl">
+                    {accuracy >= 80 ? '🎉' : accuracy >= 50 ? '💪' : '📚'}
+                </p>
+                <h2 className="text-2xl font-heading font-bold text-text-base">
+                    本輪完成！
+                </h2>
+
+                {/* Accuracy ring */}
+                <div className="flex justify-center">
+                    <div className="relative size-28">
+                        <svg viewBox="0 0 36 36" className="size-28 -rotate-90">
+                            <circle
+                                cx="18" cy="18" r="15.9"
+                                fill="none" stroke="currentColor"
+                                strokeWidth="2.5"
+                                className="text-border-base"
+                            />
+                            <circle
+                                cx="18" cy="18" r="15.9"
+                                fill="none"
+                                strokeWidth="2.5"
+                                strokeDasharray={`${accuracy}, 100`}
+                                strokeLinecap="round"
+                                className={accuracy >= 80 ? 'text-cta-base' : accuracy >= 50 ? 'text-amber-500' : 'text-red-500'}
+                                stroke="currentColor"
+                            />
+                        </svg>
+                        <span className="absolute inset-0 flex items-center justify-center text-2xl font-bold font-mono text-text-base">
+                            {accuracy}%
+                        </span>
+                    </div>
+                </div>
+
+                {/* Stats row */}
+                <div className="flex justify-center gap-6 text-sm font-medium">
+                    <span className="text-cta-base">
+                        <CheckCircle2 className="size-4 inline mr-1" />
+                        答對 {stats.correct}
+                    </span>
+                    <span className="text-red-500">
+                        <XCircle className="size-4 inline mr-1" />
+                        答錯 {stats.wrong}
+                    </span>
+                    <span className="text-text-muted">
+                        <MinusCircle className="size-4 inline mr-1" />
+                        跳過 {stats.skipped}
+                    </span>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex justify-center gap-3 pt-2">
+                    <Button variant="primary" size="sm" onClick={onRestart}>
+                        <RotateCcw className="size-4" aria-hidden />
+                        重新作答
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
+                        返回題庫
+                    </Button>
+                </div>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex gap-2">
+                {([
+                    ['all', `全部 (${results.length})`],
+                    ['wrong', `答錯 (${stats.wrong})`],
+                    ['skipped', `跳過 (${stats.skipped})`],
+                ] as const).map(([key, label]) => (
+                    <button
+                        key={key}
+                        onClick={() => setFilter(key)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            filter === key
+                                ? 'bg-primary-base text-white'
+                                : 'bg-bg-surface text-text-muted hover:bg-border-base/50'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Per-question review list */}
+            <div className="space-y-3">
+                {filteredResults.map((result, idx) => {
+                    const q = questionsMap.get(result.questionId)
+                    if (!q) return null
+                    const isExpanded = expandedId === result.questionId
+
+                    return (
+                        <div
+                            key={result.questionId}
+                            className="card overflow-hidden"
+                        >
+                            {/* Collapsed header */}
+                            <button
+                                onClick={() => setExpandedId(isExpanded ? null : result.questionId)}
+                                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-bg-surface/50 transition-colors"
+                            >
+                                {/* Status icon */}
+                                {result.isCorrect === true && (
+                                    <CheckCircle2 className="size-5 flex-shrink-0 text-cta-base" />
+                                )}
+                                {result.isCorrect === false && (
+                                    <XCircle className="size-5 flex-shrink-0 text-red-500" />
+                                )}
+                                {result.isCorrect === null && (
+                                    <MinusCircle className="size-5 flex-shrink-0 text-text-muted" />
+                                )}
+
+                                {/* Question number + truncated stem */}
+                                <span className="text-xs font-mono text-text-muted flex-shrink-0">
+                                    Q{idx + 1}
+                                </span>
+                                <span className="flex-1 text-sm text-text-base truncate">
+                                    {q.stem.slice(0, 80)}{q.stem.length > 80 ? '…' : ''}
+                                </span>
+
+                                {/* User answer vs correct */}
+                                <span className="text-xs font-mono text-text-muted flex-shrink-0">
+                                    {result.selectedOption !== null
+                                        ? LETTERS[result.selectedOption]
+                                        : '—'}
+                                    {' / '}
+                                    <span className="text-cta-base">{result.correctAnswer}</span>
+                                </span>
+
+                                {isExpanded
+                                    ? <ChevronUp className="size-4 text-text-muted flex-shrink-0" />
+                                    : <ChevronDown className="size-4 text-text-muted flex-shrink-0" />
+                                }
+                            </button>
+
+                            {/* Expanded detail */}
+                            {isExpanded && (
+                                <div className="px-4 pb-4 space-y-3 border-t border-border-base pt-3">
+                                    <LatexText className="text-text-base text-sm leading-relaxed">
+                                        {q.stem}
+                                    </LatexText>
+
+                                    {/* Options with correct/wrong highlighting */}
+                                    <div className="space-y-1.5">
+                                        {Object.keys(q.options).sort().map((key, i) => {
+                                            const optionText = (q.options as Record<string, string>)[key]
+                                            const isCorrectOption = key === result.correctAnswer
+                                            const isUserPick = result.selectedOption === i
+
+                                            let colorClass = 'bg-bg-surface text-text-muted'
+                                            if (isCorrectOption) colorClass = 'bg-cta-base/10 text-cta-base border border-cta-base/30'
+                                            else if (isUserPick && !isCorrectOption) colorClass = 'bg-red-500/10 text-red-600 border border-red-500/30'
+
+                                            return (
+                                                <div key={key} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${colorClass}`}>
+                                                    <span className="font-mono font-bold text-xs w-5">{key}</span>
+                                                    <LatexText className="flex-1">{optionText}</LatexText>
+                                                    {isUserPick && !isCorrectOption && <span className="text-xs">(你的答案)</span>}
+                                                    {isCorrectOption && <span className="text-xs">(正確)</span>}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {/* Explanation */}
+                                    {q.explanation && (
+                                        <div className="bg-bg-surface rounded-lg px-3 py-2 text-sm text-text-muted">
+                                            <span className="font-medium text-text-base">解析：</span>
+                                            <LatexText>{q.explanation}</LatexText>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )
+                })}
+
+                {filteredResults.length === 0 && (
+                    <p className="text-center text-text-muted text-sm py-8">
+                        此分類無題目
+                    </p>
+                )}
+            </div>
         </div>
     )
 }

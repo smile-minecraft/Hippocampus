@@ -4,7 +4,6 @@
  */
 
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
 

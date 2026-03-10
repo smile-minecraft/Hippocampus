@@ -34,10 +34,11 @@ export default function ExamsAdminPage() {
             }
             return { previous }
         },
-        onError: (err, variables, context: any) => {
+        onError: (err, _variables, context) => {
+            const ctx = context as { previous?: ExamSummary[] } | undefined;
             // Revert on failure
-            if (context?.previous) {
-                queryClient.setQueryData(['admin-exams'], context.previous)
+            if (ctx?.previous) {
+                queryClient.setQueryData(['admin-exams'], ctx.previous);
             }
             alert(`刪除失敗: ${err.message}`)
             setDeletingId(null)

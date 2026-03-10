@@ -50,7 +50,7 @@ export function LatexText({ children, className, plainFallback }: LatexTextProps
             return null // signal to use plain render
         }
 
-        return parts.map((part, i) => {
+        return parts.map((part, _i) => {
             if (part.type === 'text') {
                 return part.content
             }

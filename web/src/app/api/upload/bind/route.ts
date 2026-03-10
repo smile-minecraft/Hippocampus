@@ -13,6 +13,7 @@ import { Res } from "@/lib/api-response";
 import { BindUploadSchema } from "@/lib/schemas";
 import { db } from "@/lib/db";
 import { BUCKETS } from "@/lib/minio/client";
+import { log } from "@/lib/logger";
 
 function buildPublicUrl(bucket: string, objectKey: string): string {
     const baseUrl = process.env.MINIO_PUBLIC_URL ?? `http://localhost:9000/${bucket}`;
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
         return Res.ok(updated);
     } catch (err: unknown) {
-        console.error("[POST /api/upload/bind] Error:", err);
+        log.error('upload', 'Image bind failed', { error: err instanceof Error ? err.message : String(err) });
         return Res.internal("綁定圖片失敗");
     }
 }

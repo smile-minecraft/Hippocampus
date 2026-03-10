@@ -34,15 +34,14 @@ export function RelatedQuestions({ initialSlug }: RelatedQuestionsProps) {
     const [, startTransition] = useTransition()
 
     // Exposed for parent (ArticleReader) to call on intersection change
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- will be wired to ArticleReader in future
     const updateSlug = (slug: string) => {
         startTransition(() => {
             setActiveSlug(slug)
         })
     }
 
-        // Expose updater so ArticleReader can wire it up
-        ; (RelatedQuestions as { _updateSlug?: typeof updateSlug })._updateSlug = updateSlug
+    // TODO: Expose updater via callback ref or context instead of module-level mutation
 
     return (
         <ErrorBoundary>
@@ -78,7 +77,7 @@ function RelatedQuestionsInner({ slug }: { slug: string }) {
     return (
         <ul className="space-y-2 px-2" aria-label="關聯考古題">
             {questions.map((q) => {
-                const optionsObj = typeof q.options === 'string' ? JSON.parse(q.options as any) : q.options;
+                const optionsObj = typeof q.options === 'string' ? (JSON.parse(q.options) as Record<string, string>) : q.options;
                 const options: string[] = Object.keys(optionsObj).sort().map(k => optionsObj[k]);
                 return (
                     <li

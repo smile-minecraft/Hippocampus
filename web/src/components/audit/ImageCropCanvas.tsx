@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
 import { fetchPresignedUrl, uploadToMinIO, bindUploadToQuestion } from '@/lib/apiClient'
+import { log } from '@/lib/logger'
 import { cn } from '@/lib/cn'
 import { Upload, Crop } from 'lucide-react'
 
@@ -223,7 +224,7 @@ export function ImageCropCanvas({
         } catch (err) {
             const msg = err instanceof Error ? err.message : 'Upload failed'
             setError(msg)
-            console.error('[ImageCropCanvas] upload error:', err)
+            log.error('image-crop', 'Upload error', { error: err instanceof Error ? err.message : String(err) })
         } finally {
             setIsUploading(false)
             setUploadProgress(null)

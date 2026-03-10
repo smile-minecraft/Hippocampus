@@ -9,17 +9,20 @@
 // Domain entities
 // ---------------------------------------------------------------------------
 
+/** Mirrors Prisma `TagDimension` enum — single source of truth is schema.prisma */
+export type TagDimension = 'ACADEMIC' | 'ORGAN' | 'EXAM_CATEGORY' | 'META'
+
 export interface Tag {
     id: string
     name: string
     slug: string
     category: string
-    dimension?: 'SUBJECT' | 'SYSTEM' | 'SOURCE' | 'META'
+    dimension?: TagDimension
 }
 
 export interface TagsResponse {
     tags: Tag[]
-    grouped: Record<'SUBJECT' | 'SYSTEM' | 'SOURCE' | 'META', Tag[]>
+    grouped: Record<TagDimension, Tag[]>
 }
 
 export interface Question {

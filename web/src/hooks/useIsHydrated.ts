@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 /**
  * Guards against SSR/CSR hydration mismatches when reading from
@@ -20,12 +20,12 @@ import { useState, useEffect } from 'react'
  *    global state, no race condition between components
  */
 export function useIsHydrated(): boolean {
-    const [isHydrated, setIsHydrated] = useState(false)
-
-    useEffect(() => {
-        // Runs once, immediately after the first client-side paint
-        setIsHydrated(true)
-    }, [])
+    const [isHydrated] = useState(() => {
+        // In SSR, this returns false. After hydration, React's useSyncExternalStore
+        // or a subsequent render will cause re-evaluation, but useState initializer
+        // only runs once. We use the effect-free pattern: check if window exists.
+        return typeof window !== 'undefined'
+    })
 
     return isHydrated
 }

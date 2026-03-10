@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-import { AppProviders } from '@/components/providers/AppProviders'
 import { QuizCard } from '@/components/quiz/QuizCard'
 import { fetchQuestions } from '@/lib/apiClient'
 import { QuestionSkeleton } from '@/components/ui/Skeleton'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { log } from '@/lib/logger'
 import type { Question } from '@/types'
 
 export const metadata: Metadata = {
@@ -41,7 +41,7 @@ export default async function QuizPage({ searchParams }: PageProps) {
             difficulty: difficulty && difficulty.length > 0 ? difficulty : undefined
         })
     } catch (err) {
-        console.warn('[QuizPage] Could not prefetch questions:', err)
+        log.warn('quiz-page', 'Could not prefetch questions', { error: err instanceof Error ? err.message : String(err) })
     }
 
     return (

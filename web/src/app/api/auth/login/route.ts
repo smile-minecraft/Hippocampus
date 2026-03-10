@@ -22,6 +22,7 @@ import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
 import { rateLimit, getClientIp, LIMITS } from "@/lib/rate-limit";
 import { setAuthCookies } from "@/lib/auth";
+import { log } from "@/lib/logger";
 
 const LoginSchema = z.object({
     email: z.string().email("必須是有效的電子郵件格式"),
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest): Promise<Response> {
                     role: "ADMIN",
                 },
             });
-            console.log("[Auth] Provisioned default admin account.");
+            log.info('auth', 'Provisioned default admin account.');
         }
     }
 

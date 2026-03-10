@@ -13,6 +13,7 @@
  */
 
 import { GoogleGenerativeAI, SchemaType, type GenerationConfig, type Schema } from "@google/generative-ai";
+import { log } from "@/lib/logger";
 import {
     bulkhead,
     circuitBreaker,
@@ -47,17 +48,7 @@ function geminiLog(
     message: string,
     extra?: Record<string, unknown>
 ) {
-    const entry = {
-        level,
-        service: "gemini",
-        traceId,
-        message,
-        ...extra,
-        timestamp: new Date().toISOString(),
-    };
-    if (level === "error") console.error(JSON.stringify(entry));
-    else if (level === "warn") console.warn(JSON.stringify(entry));
-    else console.log(JSON.stringify(entry));
+    log[level]('gemini', message, { traceId, ...extra });
 }
 
 // ---------------------------------------------------------------------------
@@ -335,7 +326,7 @@ export async function extractQuestionsFromImages(
                     promptSize: parts.length
                 }, null, 2));
             } catch (e) {
-                console.error("Failed to write debug log", e);
+                log.error('gemini', 'Failed to write debug log', { error: e instanceof Error ? e.message : String(e) });
             }
 
             throw new Error(
@@ -415,14 +406,11 @@ export async function extractQuestionsFromImages(
     } catch (zodErr) {
         // Dump the raw text to a file so we can debug Gemini's output
         try {
-            const fs = require('node:fs');
-            const path = require('node:path');
-            const os = require('node:os');
-            const dumpPath = path.join(os.tmpdir(), `gemini-error-${traceId}.json`);
-            fs.writeFileSync(dumpPath, rawText);
+            const dumpPath = join(tmpdir(), `gemini-error-${traceId}.json`);
+            await writeFile(dumpPath, rawText);
             geminiLog("error", traceId, `Dumped raw text to ${dumpPath}`);
         } catch (e) {
-            console.error("Failed to dump raw text", e);
+            log.error('gemini', 'Failed to dump raw text', { error: e instanceof Error ? e.message : String(e) });
         }
 
         geminiLog("error", traceId, "Zod validation failed on Gemini output", {

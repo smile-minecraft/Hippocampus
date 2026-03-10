@@ -93,16 +93,16 @@ export async function fetchApi<T>(
                     }
                 })
             }
-        } catch (e) {
-            // Proceed to throw the original 401 error if refresh fails completely
-        }
+    } catch (_e) {
+        // Proceed to throw the original 401 error if refresh fails completely
+    }
     }
 
     // Treat non-2xx as structured errors by reading as text first to avoid JSON parse crashes
     const text = await res.text()
-    let json: any = null
+    let json: Record<string, unknown> = {}
     try {
-        json = text ? JSON.parse(text) : {}
+        json = text ? (JSON.parse(text) as Record<string, unknown>) : {}
     } catch {
         // Not a JSON response, likely an HTML error page or plain text from middleware
         throw new ApiClientError(
@@ -113,15 +113,19 @@ export async function fetchApi<T>(
     }
 
     if (!res.ok || !json.ok) {
-        const error = json as { ok: false; code?: string; message?: string; error?: any }
+        const error = json as { ok: false; code?: string; message?: string; error?: string | { message: string; code?: string } }
         let msg = `HTTP ${res.status}`
 
         if (error.message) msg = error.message
         else if (typeof error.error === 'string') msg = error.error
         else if (error.error && typeof error.error === 'object' && 'message' in error.error) msg = String(error.error.message)
 
+        const errorCode = error.code
+            ?? (typeof error.error === 'object' && error.error !== null ? error.error.code : undefined)
+            ?? 'UNKNOWN_ERROR'
+
         throw new ApiClientError(
-            error.code ?? (error.error?.code) ?? 'UNKNOWN_ERROR',
+            errorCode,
             msg,
             res.status,
         )
@@ -149,23 +153,105 @@ export class ApiClientError extends Error {
 // Quiz endpoints
 // ---------------------------------------------------------------------------
 
+interface PaginatedQuestions {
+    questions: Question[]
+    pagination: { total: number; page: number; limit: number; totalPages: number }
+}
+
 export async function fetchQuestions(filter: QuizFilter = {}): Promise<Question[]> {
     const params = new URLSearchParams()
-    if (filter.tagSlugs?.length) params.set('tags', filter.tagSlugs.join(','))
+    if (filter.tagSlugs?.length) params.set('tagSlugs', filter.tagSlugs.join(','))
     if (filter.difficulty?.length) params.set('difficulty', filter.difficulty.join(','))
     if (filter.limit) params.set('limit', String(filter.limit))
 
-    return fetchApi<Question[]>(`/api/questions?${params}`)
+    const result = await fetchApi<PaginatedQuestions>(`/api/questions?${params}`)
+    return result.questions
 }
 
 export async function submitAttempt(payload: {
     questionId: string
-    userAnswer: "A" | "B" | "C" | "D"
+    userAnswer: number  // 0-3 index matching ["A","B","C","D"]
 }): Promise<Attempt> {
     return fetchApi<Attempt>('/api/attempts', {
         method: 'POST',
         body: JSON.stringify(payload),
     })
+}
+
+/** Adaptive spaced-repetition: fetch one optimally-weighted question */
+export interface NextQuestionResponse {
+    id: string
+    stem: string
+    options: Record<string, string>
+    explanation: null        // withheld until answer is submitted
+    imageUrls: string[]
+    priorityScore: number
+}
+
+export async function fetchNextQuestion(tagSlugs?: string[]): Promise<NextQuestionResponse> {
+    const params = new URLSearchParams()
+    if (tagSlugs?.length) params.set('tagSlugs', tagSlugs.join(','))
+    return fetchApi<NextQuestionResponse>(`/api/quiz/next?${params}`)
+}
+
+/** Semantic search via pgvector embeddings */
+export interface SearchResult {
+    id: string
+    stem: string
+    similarity: number
+}
+
+export async function searchQuestions(query: string, tagSlugs?: string[], topK = 10): Promise<SearchResult[]> {
+    const params = new URLSearchParams({ q: query, topK: String(topK) })
+    if (tagSlugs?.length) params.set('tagSlugs', tagSlugs.join(','))
+    return fetchApi<SearchResult[]>(`/api/search?${params}`)
+}
+
+/** Fetch user's attempt history (paginated) */
+export interface AttemptRecord {
+    id: string
+    questionId: string
+    userAnswer: string
+    isCorrect: boolean
+    easeFactor: number
+    interval: number
+    repetitions: number
+    nextReviewAt: string
+    answeredAt: string
+    question: {
+        id: string
+        stem: string
+        answer: string
+        difficulty: number
+        year: number | null
+        examType: string | null
+    }
+}
+
+export interface PaginatedAttempts {
+    records: AttemptRecord[]
+    pagination: { total: number; page: number; limit: number; totalPages: number }
+}
+
+export async function fetchAttemptHistory(page = 1, limit = 20, isCorrect?: boolean): Promise<PaginatedAttempts> {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+    if (isCorrect !== undefined) params.set('isCorrect', String(isCorrect))
+    return fetchApi<PaginatedAttempts>(`/api/attempts?${params}`)
+}
+
+/** Fetch personal quiz statistics */
+export interface QuizStats {
+    totalAttempts: number
+    totalCorrect: number
+    accuracy: number            // 0-100
+    uniqueQuestions: number
+    streakCurrent: number
+    dueForReview: number
+    recentActivity: Array<{ day: string; count: number }>
+}
+
+export async function fetchQuizStats(): Promise<QuizStats> {
+    return fetchApi<QuizStats>('/api/quiz/stats')
 }
 
 // ---------------------------------------------------------------------------
@@ -335,7 +421,14 @@ export async function fetchAdminExamQuestions(id: string): Promise<Question[]> {
 import { CreateTagPayload } from './schemas';
 
 export interface AdminTagListResponse {
-    data: any[]; // Contains tags with relation _count
+    data: Array<{
+        id: string;
+        name: string;
+        slug: string;
+        dimension: string;
+        groupName: string | null;
+        _count: { questions: number };
+    }>;
     meta: { page: number; limit: number; total: number; totalPages: number };
 }
 
@@ -346,12 +439,12 @@ export async function fetchAdminTags(page = 1, limit = 50, search = '', dimensio
     return fetchApi<AdminTagListResponse>(`/api/admin/tags?${params.toString()}`);
 }
 
-export async function createAdminTag(payload: CreateTagPayload): Promise<any> {
-    return fetchApi<any>('/api/tags', { method: 'POST', body: JSON.stringify(payload) });
+export async function createAdminTag(payload: CreateTagPayload): Promise<{ data: AdminTagListResponse['data'][number] }> {
+    return fetchApi<{ data: AdminTagListResponse['data'][number] }>('/api/tags', { method: 'POST', body: JSON.stringify(payload) });
 }
 
-export async function updateAdminTag(id: string, payload: Partial<CreateTagPayload>): Promise<any> {
-    return fetchApi<any>(`/api/admin/tags?id=${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export async function updateAdminTag(id: string, payload: Partial<CreateTagPayload>): Promise<{ data: AdminTagListResponse['data'][number] }> {
+    return fetchApi<{ data: AdminTagListResponse['data'][number] }>(`/api/admin/tags?id=${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
 }
 
 export async function deleteAdminTag(id: string): Promise<void> {

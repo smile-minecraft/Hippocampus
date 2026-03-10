@@ -13,6 +13,17 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import type { Question, SessionStats } from '@/types'
 
 // ---------------------------------------------------------------------------
+// Per-question answer record for end-of-session review
+// ---------------------------------------------------------------------------
+
+export interface QuestionResult {
+    questionId: string
+    selectedOption: number | null   // null = skipped
+    isCorrect: boolean | null       // null = skipped
+    correctAnswer: string           // "A"/"B"/"C"/"D"
+}
+
+// ---------------------------------------------------------------------------
 // Shape
 // ---------------------------------------------------------------------------
 
@@ -23,6 +34,7 @@ export interface QuizSlice {
     selectedOption: number | null   // null = not yet chosen
     isRevealed: boolean
     sessionStats: SessionStats
+    questionResults: QuestionResult[]
 
     // Derived (computed inline — no selector overhead)
     currentQuestion: () => Question | undefined
@@ -48,6 +60,7 @@ export const createQuizSlice = () =>
             selectedOption: null,
             isRevealed: false,
             sessionStats: { correct: 0, wrong: 0, skipped: 0 },
+            questionResults: [],
 
             // ---- Derived ----
             currentQuestion: () => get().sessionQuestions[get().currentIndex],
@@ -60,7 +73,7 @@ export const createQuizSlice = () =>
             },
 
             revealAnswer: () => {
-                const { selectedOption, isRevealed, currentQuestion, sessionStats } = get()
+                const { selectedOption, isRevealed, currentQuestion, sessionStats, questionResults } = get()
                 if (isRevealed || selectedOption === null) return
 
                 const q = currentQuestion()
@@ -75,12 +88,25 @@ export const createQuizSlice = () =>
                         correct: isCorrect ? sessionStats.correct + 1 : sessionStats.correct,
                         wrong: !isCorrect ? sessionStats.wrong + 1 : sessionStats.wrong,
                     },
+                    questionResults: [
+                        ...questionResults,
+                        {
+                            questionId: q.id,
+                            selectedOption,
+                            isCorrect,
+                            correctAnswer: q.answer,
+                        },
+                    ],
                 })
             },
 
             nextQuestion: () => {
                 const { currentIndex, sessionQuestions } = get()
-                if (currentIndex >= sessionQuestions.length - 1) return
+                if (currentIndex >= sessionQuestions.length - 1) {
+                    // Last question — advance index to trigger end screen
+                    set({ currentIndex: currentIndex + 1, selectedOption: null, isRevealed: false })
+                    return
+                }
                 set({
                     currentIndex: currentIndex + 1,
                     selectedOption: null,
@@ -89,8 +115,27 @@ export const createQuizSlice = () =>
             },
 
             skipQuestion: () => {
-                const { currentIndex, sessionQuestions, isRevealed, sessionStats } = get()
-                if (currentIndex >= sessionQuestions.length - 1) return
+                const { currentIndex, sessionQuestions, isRevealed, sessionStats, questionResults } = get()
+                const q = get().currentQuestion()
+                const newResults = !isRevealed && q
+                    ? [...questionResults, { questionId: q.id, selectedOption: null, isCorrect: null, correctAnswer: q.answer }]
+                    : questionResults
+
+                if (currentIndex >= sessionQuestions.length - 1) {
+                    // Last question — advance index to trigger end screen
+                    set({
+                        currentIndex: currentIndex + 1,
+                        selectedOption: null,
+                        isRevealed: false,
+                        sessionStats: {
+                            ...sessionStats,
+                            skipped: !isRevealed ? sessionStats.skipped + 1 : sessionStats.skipped,
+                        },
+                        questionResults: newResults,
+                    })
+                    return
+                }
+
                 set({
                     currentIndex: currentIndex + 1,
                     selectedOption: null,
@@ -102,6 +147,7 @@ export const createQuizSlice = () =>
                             ? sessionStats.skipped + 1
                             : sessionStats.skipped,
                     },
+                    questionResults: newResults,
                 })
             },
 
@@ -112,6 +158,7 @@ export const createQuizSlice = () =>
                     selectedOption: null,
                     isRevealed: false,
                     sessionStats: { correct: 0, wrong: 0, skipped: 0 },
+                    questionResults: [],
                 }),
         })),
     )

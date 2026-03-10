@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/prisma";
-import { Prisma } from "@prisma/client";
+import { log } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
     try {
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ ok: true, data: exams });
     } catch (error) {
-        console.error("[GetExamsAPI] Error:", error);
+        log.error('admin', 'Get exams failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message: "無法取得題庫清單" }, { status: 500 });
     }
 }
@@ -76,7 +76,7 @@ export async function DELETE(req: NextRequest) {
         });
 
     } catch (error) {
-        console.error("[DeleteExamAPI] Error:", error);
+        log.error('admin', 'Delete exam failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message: "刪除題庫失敗" }, { status: 500 });
     }
 }

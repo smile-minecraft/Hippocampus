@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useCallback } from 'react'
+import { useCallback } from 'react'
 import { useIntersectionTracker } from './useIntersectionTracker'
 import { RelatedQuestions } from './RelatedQuestions'
 

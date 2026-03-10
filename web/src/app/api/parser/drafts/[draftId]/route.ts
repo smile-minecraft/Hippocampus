@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
 import { deleteObject, BUCKETS } from "@/lib/minio/client";
+import { log } from "@/lib/logger";
 
 export async function DELETE(
     request: NextRequest,
@@ -25,7 +26,7 @@ export async function DELETE(
             return Res.notFound("查無此草稿");
         }
 
-        if (draft.status === "APPROVED" as any) {
+        if (draft.status === "APPROVED") {
             return Res.conflict("此草稿已經匯入題庫，無法被刪除");
         }
 
@@ -44,14 +45,14 @@ export async function DELETE(
                     await deleteObject(BUCKETS.RAW, objectKey);
                 }
             } catch (e) {
-                console.warn(`[Draft DELETE] Failed to delete raw file from MinIO: ${draft.originalUrl}`, e);
+                log.warn('parser', 'Failed to delete raw file from MinIO', { url: draft.originalUrl, error: e instanceof Error ? e.message : String(e) });
             }
         }
 
         // Extracted inline images from JSON
-        const draftData = draft.draftJson as any;
-        if (draftData && Array.isArray(draftData.questions)) {
-            for (const q of draftData.questions) {
+        const draftData = draft.draftJson as Record<string, unknown>;
+        if (draftData && Array.isArray((draftData as { questions?: unknown[] }).questions)) {
+            for (const q of (draftData as { questions: Array<{ imagePlaceholders?: string[] }> }).questions) {
                 if (Array.isArray(q.imagePlaceholders)) {
                     for (const imgUrl of q.imagePlaceholders) {
                         try {
@@ -63,7 +64,7 @@ export async function DELETE(
                                 await deleteObject(BUCKETS.ASSETS, objectKey);
                             }
                         } catch (e) {
-                            console.warn(`[Draft DELETE] Failed to delete asset image from MinIO: ${imgUrl}`, e);
+                            log.warn('parser', 'Failed to delete asset image from MinIO', { url: imgUrl, error: e instanceof Error ? e.message : String(e) });
                         }
                     }
                 }
@@ -77,8 +78,8 @@ export async function DELETE(
 
         return Res.ok({ message: "草稿與關聯檔案已成功刪除" });
 
-    } catch (error: any) {
-        console.error("[API DELETE /parser/drafts/[id]] Error:", error);
+    } catch (error: unknown) {
+        log.error('parser', 'Draft deletion failed', { error: error instanceof Error ? error.message : String(error) });
         return Res.internal("刪除草稿時發生伺服器錯誤");
     }
 }

@@ -2,10 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/Button'
-import { TagsResponse, Tag } from '@/types'
-import { Play, Settings2 } from 'lucide-react'
+import { fetchQuizStats } from '@/lib/apiClient'
+import { TagsResponse, Tag, TagDimension } from '@/types'
+import { Play, Settings2, History, Target, Flame, BookOpen } from 'lucide-react'
+import Link from 'next/link'
 
 interface QuizDashboardProps {
     tagsData: TagsResponse
@@ -16,6 +19,14 @@ export function QuizDashboard({ tagsData }: QuizDashboardProps) {
     const [selectedTags, setSelectedTags] = useState<string[]>([])
     const [limit, setLimit] = useState<number>(20)
     const [difficulty, setDifficulty] = useState<number | null>(null)
+
+    // Fetch user stats (graceful — renders without stats if user is not authenticated)
+    const { data: stats } = useQuery({
+        queryKey: ['quiz-stats'],
+        queryFn: fetchQuizStats,
+        retry: false,
+        staleTime: 60_000,
+    })
 
     const toggleTag = (slug: string) => {
         setSelectedTags(prev =>
@@ -33,7 +44,7 @@ export function QuizDashboard({ tagsData }: QuizDashboardProps) {
     }
 
     // Render tag groups safely based on dimension keys
-    const renderTagGroup = (title: string, dimension: 'SUBJECT' | 'SYSTEM' | 'SOURCE' | 'META') => {
+    const renderTagGroup = (title: string, dimension: TagDimension) => {
         const tags = tagsData.grouped[dimension]
         if (!tags || tags.length === 0) return null
 
@@ -66,12 +77,46 @@ export function QuizDashboard({ tagsData }: QuizDashboardProps) {
     return (
         <div className="w-full max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <header className="space-y-2">
-                <h1 className="text-3xl font-heading font-bold text-text-base tracking-tight flex items-center gap-2">
-                    <Settings2 className="size-7 text-primary-base" />
-                    自訂測驗
-                </h1>
+                <div className="flex items-center justify-between">
+                    <h1 className="text-3xl font-heading font-bold text-text-base tracking-tight flex items-center gap-2">
+                        <Settings2 className="size-7 text-primary-base" />
+                        自訂測驗
+                    </h1>
+                    <Link href="/quiz/history">
+                        <Button variant="ghost" size="sm">
+                            <History className="size-4" />
+                            作答紀錄
+                        </Button>
+                    </Link>
+                </div>
                 <p className="text-text-muted">選擇你想要複習的範圍與題數設定，系統將動態為你組出最佳的試卷。</p>
             </header>
+
+            {/* Personal stats summary */}
+            {stats && stats.totalAttempts > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="card p-4 text-center space-y-1">
+                        <Target className="size-5 mx-auto text-primary-base" />
+                        <div className="text-2xl font-bold font-mono text-text-base">{stats.accuracy}%</div>
+                        <div className="text-xs text-text-muted">正確率</div>
+                    </div>
+                    <div className="card p-4 text-center space-y-1">
+                        <BookOpen className="size-5 mx-auto text-primary-base" />
+                        <div className="text-2xl font-bold font-mono text-text-base">{stats.totalAttempts}</div>
+                        <div className="text-xs text-text-muted">總作答數</div>
+                    </div>
+                    <div className="card p-4 text-center space-y-1">
+                        <Flame className="size-5 mx-auto text-amber-500" />
+                        <div className="text-2xl font-bold font-mono text-text-base">{stats.streakCurrent}</div>
+                        <div className="text-xs text-text-muted">連對紀錄</div>
+                    </div>
+                    <div className="card p-4 text-center space-y-1">
+                        <History className="size-5 mx-auto text-red-500" />
+                        <div className="text-2xl font-bold font-mono text-text-base">{stats.dueForReview}</div>
+                        <div className="text-xs text-text-muted">待複習</div>
+                    </div>
+                </div>
+            )}
 
             <section className="card p-6 md:p-8 space-y-8 bg-surface-base shadow-sm border border-border-base">
 
@@ -123,9 +168,9 @@ export function QuizDashboard({ tagsData }: QuizDashboardProps) {
 
                 {/* 標籤過濾區域 */}
                 <div className="space-y-6">
-                    {renderTagGroup('基礎學科', 'SUBJECT')}
-                    {renderTagGroup('臨床系統', 'SYSTEM')}
-                    {renderTagGroup('題目來源', 'SOURCE')}
+                    {renderTagGroup('基礎學科', 'ACADEMIC')}
+                    {renderTagGroup('臨床系統', 'ORGAN')}
+                    {renderTagGroup('考試類別', 'EXAM_CATEGORY')}
                     {renderTagGroup('題型與狀態', 'META')}
                 </div>
             </section>

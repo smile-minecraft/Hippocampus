@@ -23,6 +23,7 @@
  */
 
 import { redis } from "./redis";
+import { log } from "@/lib/logger";
 import type { NextRequest } from "next/server";
 
 export interface RateLimitOptions {
@@ -78,7 +79,7 @@ export async function rateLimit(
         };
     } catch (err) {
         // Fail-open: Redis unavailable → allow request, log warning
-        console.warn("[RateLimit] Redis error, failing open:", (err as Error).message);
+        log.warn('rate-limit', 'Redis error, failing open', { error: (err as Error).message });
         return { allowed: true, remaining: maxRequests, resetAt };
     }
 }

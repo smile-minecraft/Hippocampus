@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2, AlertTriangle, Edit2, Merge, Trash2 } from "lucide-react";
 import { fetchAdminTags, createAdminTag, updateAdminTag, deleteAdminTag, mergeAdminTags, AdminTagListResponse } from "@/lib/apiClient";
+import { CreateTagPayload } from "@/lib/schemas";
 import { TopNav } from "@/components/ui/TopNav";
 
 export default function TagsManagerPage() {
@@ -13,8 +14,8 @@ export default function TagsManagerPage() {
     const [dimension, setDimension] = useState("");
 
     // Modals state
-    const [editingTag, setEditingTag] = useState<any | null>(null);
-    const [mergingTag, setMergingTag] = useState<any | null>(null);
+    const [_editingTag, setEditingTag] = useState<AdminTagListResponse['data'][number] | null>(null);
+    const [mergingTag, setMergingTag] = useState<AdminTagListResponse['data'][number] | null>(null);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
 
     const { data: tagsData, isLoading, isError, error } = useQuery<AdminTagListResponse>({
@@ -29,6 +30,19 @@ export default function TagsManagerPage() {
         return Array.from(new Set(groups)) as string[];
     }, [tagsData]);
 
+    // Usage statistics
+    const tagStats = useMemo(() => {
+        if (!tagsData?.data) return null;
+        const total = tagsData.data.length;
+        const unused = tagsData.data.filter(t => (t._count?.questions || 0) === 0).length;
+        const totalQuestionLinks = tagsData.data.reduce((sum, t) => sum + (t._count?.questions || 0), 0);
+        const byDimension = tagsData.data.reduce<Record<string, number>>((acc, t) => {
+            acc[t.dimension] = (acc[t.dimension] || 0) + 1;
+            return acc;
+        }, {});
+        return { total, unused, totalQuestionLinks, byDimension };
+    }, [tagsData]);
+
     // Mutators
     const mergeMutation = useMutation({
         mutationFn: ({ sourceId, targetId }: { sourceId: string; targetId: string }) => mergeAdminTags(sourceId, targetId),
@@ -41,8 +55,8 @@ export default function TagsManagerPage() {
         }
     });
 
-    const editMutation = useMutation({
-        mutationFn: (vars: { id: string, payload: any }) => updateAdminTag(vars.id, vars.payload),
+    const _editMutation = useMutation({
+        mutationFn: (vars: { id: string, payload: Partial<CreateTagPayload> }) => updateAdminTag(vars.id, vars.payload),
         onSuccess: () => {
             setEditingTag(null);
             queryClient.invalidateQueries({ queryKey: ["admin-tags"] });
@@ -113,6 +127,36 @@ export default function TagsManagerPage() {
                         </select>
                     </div>
 
+                    {/* Usage Statistics Summary */}
+                    {tagStats && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+                                <div className="text-2xl font-bold text-slate-100">{tagStats.total}</div>
+                                <div className="text-xs text-slate-400 mt-1">此頁標籤數</div>
+                            </div>
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+                                <div className="text-2xl font-bold text-teal-400">{tagStats.totalQuestionLinks}</div>
+                                <div className="text-xs text-slate-400 mt-1">題目關聯總數</div>
+                            </div>
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+                                <div className={`text-2xl font-bold ${tagStats.unused > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                                    {tagStats.unused}
+                                </div>
+                                <div className="text-xs text-slate-400 mt-1">未使用標籤</div>
+                            </div>
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+                                <div className="flex gap-2 flex-wrap">
+                                    {Object.entries(tagStats.byDimension).map(([dim, count]) => (
+                                        <span key={dim} className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">
+                                            {dim}: {count}
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="text-xs text-slate-400 mt-1">維度分佈</div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-slate-800/50 rounded-xl overflow-hidden border border-slate-700">
                         <table className="w-full text-left text-sm whitespace-nowrap">
                             <thead className="bg-slate-800/80 text-slate-400 border-b border-slate-700">
@@ -161,8 +205,20 @@ export default function TagsManagerPage() {
                                         <td className="px-6 py-3 text-slate-300">
                                             {tag.groupName || <span className="text-slate-600">—</span>}
                                         </td>
-                                        <td className="px-6 py-3 text-right text-slate-300">
-                                            {tag._count?.questions || 0}
+                                        <td className="px-6 py-3 text-right">
+                                            {(() => {
+                                                const count = tag._count?.questions || 0;
+                                                const colorClass = count === 0
+                                                    ? "bg-red-500/15 text-red-400"
+                                                    : count < 5
+                                                        ? "bg-amber-500/15 text-amber-400"
+                                                        : "bg-green-500/15 text-green-400";
+                                                return (
+                                                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+                                                        {count}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
                                         <td className="px-6 py-3 text-right">
                                             <div className="flex justify-end gap-2 text-slate-400">
@@ -236,7 +292,7 @@ export default function TagsManagerPage() {
 // ---------------------------------------------------------------------------
 // Tag Merge Modal Component
 // ---------------------------------------------------------------------------
-function MergeTagModal({ sourceTag, onClose, onMerge, isMerging }: { sourceTag: any, onClose: () => void, onMerge: (targetId: string) => void, isMerging: boolean }) {
+function MergeTagModal({ sourceTag, onClose, onMerge, isMerging }: { sourceTag: AdminTagListResponse['data'][number], onClose: () => void, onMerge: (targetId: string) => void, isMerging: boolean }) {
     const [searchQuery, setSearchQuery] = useState("");
     const [targetTagId, setTargetTagId] = useState("");
     const [confirmName, setConfirmName] = useState("");
@@ -332,21 +388,39 @@ function MergeTagModal({ sourceTag, onClose, onMerge, isMerging }: { sourceTag: 
 }
 
 // ---------------------------------------------------------------------------
+// Slug auto-generation helper
+// ---------------------------------------------------------------------------
+function generateSlug(name: string): string {
+    return name
+        .toLowerCase()
+        .trim()
+        .replace(/[^\p{L}\p{N}\s-]/gu, "")  // keep letters (incl. CJK), digits, spaces, hyphens
+        .replace(/[\s_]+/g, "-")              // spaces / underscores → hyphens
+        .replace(/-+/g, "-")                  // collapse consecutive hyphens
+        .replace(/^-|-$/g, "");               // trim leading/trailing hyphens
+}
+
+// ---------------------------------------------------------------------------
 // Create Tag Modal Component
 // ---------------------------------------------------------------------------
-function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onClose: () => void, onCreate: (data: any) => void, isCreating: boolean, existingGroups: string[] }) {
+function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onClose: () => void, onCreate: (data: CreateTagPayload) => void, isCreating: boolean, existingGroups: string[] }) {
     const [name, setName] = useState("");
-    const [dimension, setDimension] = useState<string>("ACADEMIC");
+    const [slugOverride, setSlugOverride] = useState("");
+    const [dimension, setDimension] = useState<CreateTagPayload["dimension"]>("ACADEMIC");
     const [groupName, setGroupName] = useState("");
     const [showGroupSuggestions, setShowGroupSuggestions] = useState(false);
+
+    const autoSlug = generateSlug(name);
+    const effectiveSlug = slugOverride || autoSlug;
 
     const filteredGroups = existingGroups.filter(g => g.toLowerCase().includes(groupName.toLowerCase()) && g !== groupName);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name.trim() || !dimension) return;
+        if (!name.trim() || !effectiveSlug) return;
         onCreate({
             name: name.trim(),
+            slug: effectiveSlug,
             dimension,
             groupName: groupName.trim() || null,
         });
@@ -375,12 +449,28 @@ function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onC
                             </div>
 
                             <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-300">
+                                    Slug <span className="text-slate-500 text-xs">(自動從名稱產生，可手動覆寫)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder={autoSlug || "auto-generated-slug"}
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition font-mono"
+                                    value={slugOverride}
+                                    onChange={(e) => setSlugOverride(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                                />
+                                {effectiveSlug && (
+                                    <p className="text-xs text-slate-500">預覽: <code className="text-teal-400">{effectiveSlug}</code></p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-300">所屬維度 (Dimension) <span className="text-red-400">*</span></label>
                                 <select
                                     required
                                     className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
                                     value={dimension}
-                                    onChange={(e) => setDimension(e.target.value)}
+                                    onChange={(e) => setDimension(e.target.value as CreateTagPayload["dimension"])}
                                 >
                                     <option value="ACADEMIC">ACADEMIC (基礎學科)</option>
                                     <option value="ORGAN">ORGAN (人體器官)</option>
@@ -430,7 +520,7 @@ function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onC
                         </button>
                         <button
                             type="submit"
-                            disabled={isCreating || !name.trim()}
+                            disabled={isCreating || !name.trim() || !effectiveSlug}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 hover:bg-teal-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

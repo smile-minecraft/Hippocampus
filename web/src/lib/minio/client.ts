@@ -8,9 +8,9 @@
  * - Explicit bucket management helpers for bootstrap
  */
 
-import { Client as MinioClient, type BucketItem } from "minio";
-import { createReadStream } from "node:fs";
+import { Client as MinioClient } from "minio";
 import { Readable } from "node:stream";
+import { log } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Singleton
@@ -72,30 +72,12 @@ async function withExponentialRetry<T>(
             return await operation();
         } catch (err) {
             if (attempt >= maxAttempts) {
-                console.error(
-                    JSON.stringify({
-                        level: "error",
-                        service: "minio",
-                        label,
-                        attempt,
-                        message: (err as Error).message,
-                        timestamp: new Date().toISOString(),
-                    })
-                );
+                log.error('minio', (err as Error).message, { label, attempt });
                 throw err;
             }
             const jitter = Math.random() * 200;
             const delay = Math.min(baseDelayMs * 2 ** (attempt - 1) + jitter, maxDelayMs);
-            console.warn(
-                JSON.stringify({
-                    level: "warn",
-                    service: "minio",
-                    label,
-                    attempt,
-                    retryInMs: delay,
-                    timestamp: new Date().toISOString(),
-                })
-            );
+            log.warn('minio', 'Retrying', { label, attempt, retryInMs: delay });
             await new Promise((res) => setTimeout(res, delay));
         }
     }
@@ -118,7 +100,7 @@ export async function uploadStream(
                 ? minioClient.putObject(bucket, objectKey, stream, contentLength, {
                     "Content-Type": contentType,
                 })
-                : (minioClient as any).putObject(bucket, objectKey, stream, {
+                : (minioClient as unknown as { putObject: (bucket: string, key: string, stream: Readable, metadata: Record<string, string>) => Promise<unknown> }).putObject(bucket, objectKey, stream, {
                     "Content-Type": contentType,
                 }),
         { label: `uploadStream:${objectKey}` }
@@ -213,14 +195,7 @@ export async function ensureBucketsExist(): Promise<void> {
         const exists = await minioClient.bucketExists(bucket);
         if (!exists) {
             await minioClient.makeBucket(bucket, "us-east-1");
-            console.info(
-                JSON.stringify({
-                    level: "info",
-                    service: "minio",
-                    message: `Bucket created: ${bucket}`,
-                    timestamp: new Date().toISOString(),
-                })
-            );
+            log.info('minio', 'Bucket created', { bucket });
         }
     }
 }
@@ -228,9 +203,9 @@ export async function ensureBucketsExist(): Promise<void> {
 // Smoke test when run directly
 if (require.main === module) {
     ensureBucketsExist()
-        .then(() => console.log("MinIO buckets OK"))
+        .then(() => log.info('minio', 'All buckets verified'))
         .catch((err) => {
-            console.error(err);
+            log.error('minio', 'Bucket bootstrap failed', { error: err instanceof Error ? err.message : String(err) });
             process.exit(1);
         });
 }

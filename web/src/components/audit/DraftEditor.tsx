@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from 'react'
 import { ImageCropCanvas } from './ImageCropCanvas'
-import { cn } from '@/lib/cn'
 import { CheckCircle } from 'lucide-react'
 
 interface AuditTask {

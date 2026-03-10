@@ -31,12 +31,13 @@ import {
     getRefreshTokenFromCookie,
 } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { log } from "@/lib/logger";
 
 export async function POST(_request: NextRequest): Promise<Response> {
     const refreshToken = await getRefreshTokenFromCookie();
 
     if (!refreshToken) {
-        console.error("[Refresh Route] Missing refresh_token cookie");
+        log.error('auth', 'Missing refresh_token cookie');
         return Res.unauthorized("找不到 Refresh Token，請重新登入");
     }
 
@@ -60,7 +61,7 @@ export async function POST(_request: NextRequest): Promise<Response> {
         });
 
         if (!user) {
-            console.error("[Refresh Route] User not found or soft-deleted", payload.sub);
+            log.error('auth', 'User not found or soft-deleted', { userId: payload.sub });
             return Res.unauthorized("帳號不存在或已被停用");
         }
 
@@ -70,7 +71,7 @@ export async function POST(_request: NextRequest): Promise<Response> {
         return Res.ok({ csrfToken });
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Token 驗證失敗";
-        console.error("[Refresh Route] verifyRefreshToken failed:", message);
+        log.error('auth', 'verifyRefreshToken failed', { error: message });
         return Res.unauthorized(message);
     } finally {
         // ── Step 5: Always release lock ──────────────────────────────────────────

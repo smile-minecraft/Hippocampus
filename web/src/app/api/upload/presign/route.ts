@@ -16,6 +16,7 @@ import { PresignUploadSchema } from "@/lib/schemas";
 import { presignedPutUrl, BUCKETS } from "@/lib/minio/client";
 import * as crypto from "node:crypto";
 import path from "node:path";
+import { log } from "@/lib/logger";
 
 export async function POST(request: NextRequest): Promise<Response> {
     const userId = request.headers.get("x-user-id");
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             bucket: BUCKETS.ASSETS,
         });
     } catch (err: unknown) {
-        console.error("[POST /api/upload/presign] Error:", err);
+        log.error('upload', 'Presign URL generation failed', { error: err instanceof Error ? err.message : String(err) });
         return Res.internal("產生上傳連結失敗");
     }
 }

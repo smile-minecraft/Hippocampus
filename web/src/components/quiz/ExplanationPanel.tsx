@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, XCircle, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { LatexText } from '@/components/ui/LatexText'
 
 interface ExplanationPanelProps {
     isRevealed: boolean
@@ -68,7 +69,7 @@ export function ExplanationPanel({
 
                     {/* Explanation text */}
                     {explanation ? (
-                        <p className="text-base text-text-base leading-relaxed">{explanation}</p>
+                        <LatexText className="text-base text-text-base leading-relaxed">{explanation}</LatexText>
                     ) : (
                         <p className="text-sm text-text-muted italic">（暫無詳解）</p>
                     )}

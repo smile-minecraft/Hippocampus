@@ -16,6 +16,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
+import { log } from "@/lib/logger";
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ const GetQuestionsSchema = z.object({
     tagSlugs: z.string().optional(), // comma-separated
     year: z.coerce.number().int().positive().optional(),
     examType: z.string().max(50).optional(),
+    difficulty: z.string().optional(), // comma-separated difficulty levels (1-5)
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -54,15 +56,19 @@ export async function GET(request: NextRequest): Promise<Response> {
     const parsed = GetQuestionsSchema.safeParse(params);
     if (!parsed.success) return Res.fromZodError(parsed.error);
 
-    const { tagSlugs, year, examType, page, limit } = parsed.data;
+    const { tagSlugs, year, examType, difficulty, page, limit } = parsed.data;
     const tagList = tagSlugs
         ? tagSlugs.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined;
+    const difficultyList = difficulty
+        ? difficulty.split(",").map(Number).filter((n) => n >= 1 && n <= 5)
         : undefined;
 
     const where = {
         deletedAt: null,
         ...(year ? { year } : {}),
         ...(examType ? { examType } : {}),
+        ...(difficultyList?.length ? { difficulty: { in: difficultyList } } : {}),
         ...(tagList?.length
             ? {
                 tags: {
@@ -135,7 +141,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
         return Res.created(question);
     } catch (err: unknown) {
-        console.error("[POST /api/questions] Error:", err);
+        log.error('questions', 'Question creation failed', { error: err instanceof Error ? err.message : String(err) });
         return Res.internal();
     }
 }

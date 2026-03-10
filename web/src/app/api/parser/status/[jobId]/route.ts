@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parserQueue } from "@/lib/queue/jobs";
 import { ApiResponse } from "@/types";
+import { log } from "@/lib/logger";
 
 export interface ParserJobStatusPayload {
     jobId: string;
     state: string;
     progress: number | object | string | boolean;
-    result?: any;
+    result?: unknown;
     errorReason?: string;
 }
 
@@ -47,8 +48,8 @@ export async function GET(
                 errorReason: job.failedReason,
             },
         });
-    } catch (error: any) {
-        console.error("[ParserStatusAPI] Error:", error);
+    } catch (error: unknown) {
+        log.error('parser', 'Job status query failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
             {
                 ok: false,
@@ -83,8 +84,8 @@ export async function DELETE(
             message: "任務已成功取消與移除",
             data: { canceled: true }
         });
-    } catch (error: any) {
-        console.error("[ParserStatusAPI] Error canceling job:", error);
+    } catch (error: unknown) {
+        log.error('parser', 'Error canceling job', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
             { ok: false, code: "INTERNAL_ERROR", message: "取消任務時發生錯誤" },
             { status: 500 }

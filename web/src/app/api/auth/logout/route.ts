@@ -8,6 +8,7 @@
 import { NextRequest } from "next/server";
 import { Res } from "@/lib/api-response";
 import { clearAuthCookies, getRefreshTokenFromCookie, revokeRefreshToken } from "@/lib/auth";
+import { log } from "@/lib/logger";
 
 export async function POST(_request: NextRequest): Promise<Response> {
     const refreshToken = await getRefreshTokenFromCookie();
@@ -15,7 +16,7 @@ export async function POST(_request: NextRequest): Promise<Response> {
     // Revoke the refresh token JTI in Redis (best-effort; don't block on failure)
     if (refreshToken) {
         await revokeRefreshToken(refreshToken).catch((err) => {
-            console.warn("[Logout] Failed to revoke refresh token:", (err as Error).message);
+            log.warn('auth', 'Failed to revoke refresh token', { error: (err as Error).message });
         });
     }
 

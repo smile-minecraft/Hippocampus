@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
 import { z } from "zod";
+import { log } from "@/lib/logger";
 
 const QuestionUpdateSchema = z.object({
     stem: z.string().min(1, "題幹不能為空").optional(),
@@ -51,8 +52,8 @@ export async function PATCH(
         });
 
         return Res.ok(updated);
-    } catch (e: any) {
-        console.error(`[PATCH /api/admin/questions/${id}]`, e);
+    } catch (e: unknown) {
+        log.error('admin', 'Question update failed', { questionId: id, error: e instanceof Error ? e.message : String(e) });
         return Res.internal("更新題目時發生伺服器錯誤");
     }
 }
@@ -76,9 +77,10 @@ export async function DELETE(
         });
 
         return Res.ok({ message: "題目已成功軟刪除" });
-    } catch (e: any) {
-        console.error(`[DELETE /api/admin/questions/${id}]`, e);
-        if (e.code === 'P2025') {
+    } catch (e: unknown) {
+        log.error('admin', 'Question deletion failed', { questionId: id, error: e instanceof Error ? e.message : String(e) });
+        const prismaError = e as { code?: string };
+        if (prismaError.code === 'P2025') {
             return Res.notFound("查無此題目");
         }
         return Res.internal("刪除題目時發生伺服器錯誤");

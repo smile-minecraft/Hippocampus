@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
 import { CreateTagSchema } from "@/lib/schemas";
 import { type TagDimension } from "@prisma/client";
+import { log } from "@/lib/logger";
 
 export async function GET(request: NextRequest): Promise<Response> {
     const role = request.headers.get("x-user-role");
@@ -52,9 +52,10 @@ export async function GET(request: NextRequest): Promise<Response> {
                 totalPages: Math.ceil(total / limit)
             }
         });
-    } catch (e: any) {
-        console.error("Tags API DB Error:", e);
-        return Res.internal(`Database query failed: ${e.message || String(e)}`);
+    } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        log.error('admin', 'Tags DB query failed', { error: e instanceof Error ? e.message : String(e) });
+        return Res.internal(`Database query failed: ${message}`);
     }
 }
 
@@ -81,8 +82,9 @@ export async function PATCH(request: NextRequest): Promise<Response> {
             data: parsed.data
         });
         return Res.ok(tag);
-    } catch (err: any) {
-        if (err.code === "P2002") {
+    } catch (err: unknown) {
+        const prismaError = err as { code?: string };
+        if (prismaError.code === "P2002") {
             return Res.conflict("相同維度與群組下的標籤已存在，或 Slug 重複");
         }
         return Res.internal();

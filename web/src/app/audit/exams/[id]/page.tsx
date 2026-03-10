@@ -1,11 +1,11 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchAdminExamQuestions, bulkDeleteQuestions, bulkTransferQuestions } from '@/lib/apiClient'
 import { useQuestionSelection } from '@/lib/stores/useQuestionSelection'
 import { TopNav } from '@/components/ui/TopNav'
-import { Loader2, Trash2, ArrowRightLeft, Square, CheckSquare, Pencil, X, ChevronRight } from 'lucide-react'
+import { Loader2, Trash2, ArrowRightLeft, Square, CheckSquare, Pencil, X } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useMemo } from 'react'
 import { updateAdminQuestion, deleteAdminQuestion, type Question } from '@/lib/apiClient'
@@ -13,7 +13,6 @@ import { LatexText } from '@/components/ui/LatexText'
 
 export default function ExamDetailPage() {
     const params = useParams()
-    const router = useRouter()
     const queryClient = useQueryClient()
     const id = params.id as string
 

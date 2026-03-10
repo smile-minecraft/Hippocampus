@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { UploadCloud, FileText, X } from 'lucide-react'
 import { uploadParserDocument, fetchParserJobStatus, cancelParserJob } from '@/lib/apiClient'
+import { log } from '@/lib/logger'
 import { useUploadStore } from '@/store'
 import type { JobState } from '@/store/uploadSlice'
 
@@ -93,9 +94,9 @@ export function DocumentUploader() {
                 } else {
                     pollRefs.current.delete(localId)
                 }
-            } catch (err: any) {
+            } catch (err: unknown) {
                 // If the job is literally not found (e.g. after DB reset), stop polling
-                if (err.statusCode === 404) {
+                if (err instanceof Error && 'statusCode' in err && (err as { statusCode: number }).statusCode === 404) {
                     updateJob(localId, { error: '任務已失效 (404)' })
                     pollRefs.current.delete(localId)
                     return
@@ -110,8 +111,9 @@ export function DocumentUploader() {
 
     // Cleanup all polls on unmount
     useEffect(() => {
+        const polls = pollRefs.current
         return () => {
-            pollRefs.current.forEach((t) => clearTimeout(t))
+            polls.forEach((t) => clearTimeout(t))
         }
     }, [])
 
@@ -151,8 +153,8 @@ export function DocumentUploader() {
                     updateJob(localId, { uploading: false, jobId: res.jobId })
                     startPolling(localId, res.jobId)
                 })
-                .catch((err: any) => {
-                    updateJob(localId, { uploading: false, error: err.message || '上傳失敗' })
+                .catch((err: unknown) => {
+                    updateJob(localId, { uploading: false, error: err instanceof Error ? err.message : '上傳失敗' })
                 })
         }
 
@@ -175,7 +177,7 @@ export function DocumentUploader() {
             try {
                 await cancelParserJob(jobId)
             } catch (error) {
-                console.error("Failed to cancel job on server:", error)
+                log.error('uploader', 'Failed to cancel job on server', { error: error instanceof Error ? error.message : String(error) })
             }
         }
     }

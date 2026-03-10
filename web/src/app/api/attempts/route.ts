@@ -1,10 +1,10 @@
 /**
+ * GET  /api/attempts — Fetch user's paginated answer history (authenticated).
  * POST /api/attempts — Submit an answer and update spaced repetition record.
  *
- * Rate limit: 60 submissions / minute per user ID (not IP, since we have
- * an authenticated user identity available).
+ * Rate limit (POST): 60 submissions / minute per user ID.
  *
- * FSRS-inspired update logic:
+ * FSRS-inspired update logic (POST):
  *  If the answer is CORRECT:
  *    repetitions += 1
  *    interval = ceil(interval * easeFactor) (minimum 1 day)
@@ -29,6 +29,70 @@ import { Res } from "@/lib/api-response";
 import { rateLimit, LIMITS } from "@/lib/rate-limit";
 
 import { SubmitAttemptSchema } from "@/lib/schemas";
+import { log } from "@/lib/logger";
+
+// ─── GET /api/attempts — Fetch user's attempt history ─────────────────────────
+
+const GetAttemptsSchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    isCorrect: z.enum(["true", "false"]).optional(),
+});
+
+export async function GET(request: NextRequest): Promise<Response> {
+    const userId = request.headers.get("x-user-id");
+    if (!userId) return Res.unauthorized();
+
+    const params = Object.fromEntries(request.nextUrl.searchParams);
+    const parsed = GetAttemptsSchema.safeParse(params);
+    if (!parsed.success) return Res.fromZodError(parsed.error);
+
+    const { page, limit, isCorrect } = parsed.data;
+
+    const where = {
+        userId,
+        deletedAt: null,
+        ...(isCorrect !== undefined ? { isCorrect: isCorrect === "true" } : {}),
+    };
+
+    const [records, total] = await Promise.all([
+        db.userQuestionRecord.findMany({
+            where,
+            select: {
+                id: true,
+                questionId: true,
+                userAnswer: true,
+                isCorrect: true,
+                easeFactor: true,
+                interval: true,
+                repetitions: true,
+                nextReviewAt: true,
+                answeredAt: true,
+                question: {
+                    select: {
+                        id: true,
+                        stem: true,
+                        answer: true,
+                        difficulty: true,
+                        year: true,
+                        examType: true,
+                    },
+                },
+            },
+            orderBy: { answeredAt: "desc" },
+            skip: (page - 1) * limit,
+            take: limit,
+        }),
+        db.userQuestionRecord.count({ where }),
+    ]);
+
+    return Res.ok({
+        records,
+        pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
+}
+
+// ─── POST /api/attempts — Submit an answer and update spaced repetition record
 
 
 export async function POST(request: NextRequest): Promise<Response> {
@@ -146,7 +210,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             return upsertedRecord;
         });
     } catch (err) {
-        console.error("[POST /api/attempts] Transaction failed:", err);
+        log.error('attempts', 'Transaction failed', { error: err instanceof Error ? err.message : String(err) });
         return Res.internal("儲存作答紀錄失敗，請稍後再試");
     }
 

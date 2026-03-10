@@ -7,6 +7,7 @@ import { ApiResponse, ParserJobResponsePayload } from "@/types";
 import { db } from "@/lib/db/prisma";
 import busboy from "busboy";
 import { Readable } from "stream";
+import { log } from "@/lib/logger";
 
 // Override Vercel/Next timeout limit to 5 mins
 export const maxDuration = 300;
@@ -47,7 +48,7 @@ export async function POST(
                         try {
                             const restored = Buffer.from(safeFilename, 'latin1').toString('utf8');
                             if (!restored.includes('')) safeFilename = restored;
-                        } catch (e) { }
+                        } catch { /* ignore encoding error */ }
                     }
                     originalFilename = safeFilename;
                     fileStream = stream;
@@ -87,7 +88,7 @@ export async function POST(
 
             bb.on("error", reject);
 
-            const nodeStream = Readable.fromWeb(req.body as any);
+            const nodeStream = Readable.fromWeb(req.body as ReadableStream);
             nodeStream.pipe(bb);
         });
 
@@ -135,13 +136,14 @@ export async function POST(
             ok: true,
             data: { jobId: jobResult.jobId },
         });
-    } catch (error: any) {
-        console.error("[ParserUploadAPI] Error:", error);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        log.error('parser', 'Upload failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
             {
                 ok: false,
                 code: "INTERNAL_ERROR",
-                message: `檔案上傳與解析任務建立失敗: ${error?.message ?? String(error)}`,
+                message: `檔案上傳與解析任務建立失敗: ${message}`,
             },
             { status: 500 }
         );

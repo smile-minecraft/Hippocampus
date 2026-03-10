@@ -49,7 +49,7 @@ const themeInitScript = `
         document.documentElement.classList.remove('dark');
         document.documentElement.setAttribute('data-theme', 'light');
       }
-    } catch (e) {}
+    } catch (_e) { /* theme detection is best-effort */ }
   })();
 `;
 

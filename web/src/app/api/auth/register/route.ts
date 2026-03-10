@@ -21,6 +21,7 @@ import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
 import { rateLimit, getClientIp, LIMITS } from "@/lib/rate-limit";
 import { setAuthCookies } from "@/lib/auth";
+import { log } from "@/lib/logger";
 
 const RegisterSchema = z.object({
     email: z
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             return Res.conflict("該電子郵件已被註冊");
         }
 
-        console.error("[Register] Unexpected error:", err);
+        log.error('auth', 'Unexpected registration error', { error: err instanceof Error ? err.message : String(err) });
         return Res.internal();
     }
 }

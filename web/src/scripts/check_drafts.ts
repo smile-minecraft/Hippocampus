@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- standalone CLI script */
 import { db } from "../lib/db/prisma"
 
 async function main() {

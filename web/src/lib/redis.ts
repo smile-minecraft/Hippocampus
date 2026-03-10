@@ -12,6 +12,7 @@
  */
 
 import IORedis from "ioredis";
+import { log } from "@/lib/logger";
 
 const globalForRedis = globalThis as unknown as {
     redis: IORedis | undefined;
@@ -29,13 +30,13 @@ function createRedisClient(): IORedis {
     });
 
     client.on("connect", () =>
-        console.info("[Redis] Connected to Redis server.")
+        log.info('redis', 'Connected to Redis server')
     );
     client.on("error", (err) =>
-        console.error("[Redis] Connection error:", err.message)
+        log.error('redis', 'Connection error', { error: err.message })
     );
     client.on("reconnecting", (delay: number) =>
-        console.warn(`[Redis] Reconnecting in ${delay}ms…`)
+        log.warn('redis', 'Reconnecting', { delayMs: delay })
     );
 
     return client;

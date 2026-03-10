@@ -8,7 +8,7 @@
  */
 
 export { createQuizSlice } from './quizSlice'
-export type { QuizSlice } from './quizSlice'
+export type { QuizSlice, QuestionResult } from './quizSlice'
 
 export { useUIStore } from './uiSlice'
 export type { UISlice, Theme } from './uiSlice'

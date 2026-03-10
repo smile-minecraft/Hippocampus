@@ -37,6 +37,7 @@ export const GetQuestionsSchema = z.object({
     tagSlugs: z.string().optional(), // comma-separated
     year: z.coerce.number().int().positive().optional(),
     examType: z.string().max(50).optional(),
+    difficulty: z.string().optional(), // comma-separated difficulty levels (1-5)
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
 });

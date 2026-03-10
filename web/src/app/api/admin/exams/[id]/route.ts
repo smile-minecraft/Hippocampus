@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/prisma";
+import { log } from "@/lib/logger";
 
 export async function GET(
     req: NextRequest,
@@ -36,7 +37,7 @@ export async function GET(
         return NextResponse.json({ ok: true, data: questions });
 
     } catch (error) {
-        console.error("[GetExamQuestionsAPI] Error:", error);
+        log.error('admin', 'Get exam questions failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message: "無法取得考卷題目清單" }, { status: 500 });
     }
 }

@@ -23,7 +23,6 @@
  */
 
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import { TaskType } from "@google/generative-ai";
 import { Res } from "@/lib/api-response";
 import { rateLimit, getClientIp, LIMITS } from "@/lib/rate-limit";
@@ -31,6 +30,7 @@ import { embed } from "@/lib/embedding";
 import { db } from "@/lib/db";
 
 import { SearchSchema } from "@/lib/schemas";
+import { log } from "@/lib/logger";
 
 
 interface SearchResult {
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   try {
     queryVector = await embed(q, TaskType.RETRIEVAL_QUERY);
   } catch (err) {
-    console.error("[Search] Embedding generation failed:", err);
+    log.error('search', 'Embedding generation failed', { error: err instanceof Error ? err.message : String(err) });
     return Res.internal("向量生成失敗，請稍後再試");
   }
 
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       total: results.length,
     });
   } catch (err) {
-    console.error("[Search] pgvector query failed:", err);
+    log.error('search', 'pgvector query failed', { error: err instanceof Error ? err.message : String(err) });
     return Res.internal("搜尋失敗，請稍後再試");
   }
 }

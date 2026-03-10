@@ -148,9 +148,9 @@ describe('Gemini AI Parser - extraction resilience and edge cases', () => {
         const { data } = await extractQuestionsFromImages(DUMMY_IMAGES, TRACE_ID);
 
         // Use type assertion to silence TS checking properties that shouldn't exist
-        expect((data as any).someWeirdProperty).toBeUndefined();
-        expect((data.questions[0] as any).garbageField).toBeUndefined();
-        expect((data.metadata as any).extraThing).toBeUndefined();
+        expect((data as Record<string, unknown>).someWeirdProperty).toBeUndefined();
+        expect((data.questions[0] as Record<string, unknown>).garbageField).toBeUndefined();
+        expect((data.metadata as Record<string, unknown>).extraThing).toBeUndefined();
     });
 
     it('6. Physical Truncation Case: Safely throws custom JSON parse failure instead of hard crash', async () => {

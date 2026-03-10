@@ -20,9 +20,10 @@
  */
 
 import { Worker, type Job } from "bullmq";
+import { log } from "../lib/logger";
 import { exec, spawn } from "node:child_process";
-import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { pipeline as streamPipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
@@ -41,7 +42,7 @@ import {
 import { extractQuestionsFromImages } from "../lib/ai/gemini";
 import type { ChildProcess } from "node:child_process";
 
-const execAsync = promisify(exec);
+const _execAsync = promisify(exec);
 
 // Track all spawns so we can SIGKILL them if graceful shutdown times out.
 const activeSubprocesses = new Set<ChildProcess>();
@@ -107,11 +108,7 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
     const { traceId, docType, s3Key, originalFilename } = job.data;
     const tmpDir = path.join(tmpdir(), `parser-${traceId}`);
 
-    console.log(`\n${COLORS.bold}${COLORS.cyan}┌─ Job ${job.id}${COLORS.reset}`);
-    console.log(`${COLORS.cyan}│${COLORS.reset} traceId  : ${traceId}`);
-    console.log(`${COLORS.cyan}│${COLORS.reset} file     : ${originalFilename ?? s3Key}`);
-    console.log(`${COLORS.cyan}│${COLORS.reset} type     : ${docType}`);
-    console.log(`${COLORS.cyan}└───────────────${COLORS.reset}`);
+    log.info('parser-worker', `Job started: ${traceId}`, { jobId: job.id, file: originalFilename ?? s3Key, docType });
 
     // Update draft status to PROCESSING
     // Using upsert for maximum resilience against race conditions or missing records.
@@ -146,7 +143,7 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
             traceId,
             (msg) => {
                 // Fire-and-forget progress update during AI processing
-                reportProgress(job, 70, msg).catch(() => { });
+                reportProgress(job, 70, msg).catch(() => { /* non-critical progress update */ });
             }
         );
 
@@ -177,18 +174,12 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
         // Terminal failure output
         process.stdout.write(`\r\x1b[K${COLORS.red}❌ [${job.id?.slice(0, 8)}] FAILED: ${message}${COLORS.reset}\n`);
 
-        // Structured failure log (JSON for log aggregation)
-        console.error(
-            JSON.stringify({
-                level: "error",
-                service: "parser-worker",
-                traceId,
-                jobId: job.id,
-                message,
-                stack,
-                timestamp: new Date().toISOString(),
-            })
-        );
+        // Structured failure log
+        log.error('parser-worker', message, {
+            traceId,
+            jobId: job.id,
+            stack,
+        });
 
         // Persist error for admin visibility (not a silent failure) — also use upsert
         await db.parsedDraft.upsert({
@@ -210,7 +201,7 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
     } finally {
         // Always clean up tmp directory to prevent disk exhaustion
         await rm(tmpDir, { recursive: true, force: true }).catch((e) =>
-            console.warn(`Failed to clean tmp dir ${tmpDir}:`, e.message)
+            log.warn('parser-worker', `Failed to clean tmp dir ${tmpDir}`, { error: e.message })
         );
     }
 }
@@ -235,7 +226,7 @@ async function processWordDocument(
     let imageIndex = 0;
 
     // mammoth extracts images via callback — we stream each to MinIO
-    const result = await mammoth.convertToHtml(
+    const _result = await mammoth.convertToHtml(
         { path: tmpWordPath },
         {
             convertImage: mammoth.images.imgElement(async (image) => {
@@ -288,13 +279,13 @@ async function processPdfDocument(
 
     await streamPipeline(rawStream, createWriteStream(tmpPdfPath));
     const startMsg = "正在提取高解析度圖片，大檔轉換可能費時數分鐘，請稍候...";
-    console.log(`\n    [15%] ⏱  ${startMsg}`);
+    log.info('parser-worker', startMsg, { percent: 15 });
     await job.updateProgress({ percent: 15, message: startMsg });
 
     // Rasterize PDF to PNGs via pdftoppm (part of Poppler)
     // Each page becomes: {tmpDir}/page-NNNN.png
     await rasterizePdf(tmpPdfPath, path.join(tmpDir, "page"), traceId);
-    console.log(`    [40%] ✅  圖片轉換成功！正在準備上傳至儲存庫...`);
+    log.info('parser-worker', '圖片轉換成功！正在準備上傳至儲存庫...', { percent: 40 });
     await job.updateProgress({ percent: 40, message: "圖片轉換成功！正在準備上傳至儲存庫..." });
 
     // Find all generated PNG files
@@ -307,21 +298,21 @@ async function processPdfDocument(
     }
 
     // Upload each PNG to MinIO assets bucket (fPutObject — streams internally)
-    const fs = require('node:fs');
+    const { readFileSync } = await import('node:fs');
     const imageParts: Array<{ type: "base64"; mimeType: string; data: string }> = [];
 
     for (const pngFile of pngFiles) {
         const localPath = path.join(tmpDir, pngFile);
         const objectKey = `pdf/${traceId}/${pngFile}`;
 
-        const url = await uploadFile(
+        const _url = await uploadFile(
             BUCKETS.ASSETS,
             objectKey,
             localPath,
             "image/png"
         );
 
-        const buffer = fs.readFileSync(localPath);
+        const buffer = readFileSync(localPath);
         imageParts.push({
             type: "base64",
             mimeType: "image/png",
@@ -413,42 +404,27 @@ const worker = new Worker<ParseDocumentJobData>(
 );
 
 worker.on("completed", (job) => {
-    console.info(
-        JSON.stringify({
-            level: "info",
-            service: "parser-worker",
-            event: "job_completed",
-            jobId: job.id,
-            traceId: job.data.traceId,
-            timestamp: new Date().toISOString(),
-        })
-    );
+    log.info('parser-worker', 'Job completed', {
+        event: "job_completed",
+        jobId: job.id,
+        traceId: job.data.traceId,
+    });
 });
 
 worker.on("failed", (job, err) => {
-    console.error(
-        JSON.stringify({
-            level: "error",
-            service: "parser-worker",
-            event: "job_failed",
-            jobId: job?.id,
-            traceId: job?.data.traceId,
-            message: err.message,
-            timestamp: new Date().toISOString(),
-        })
-    );
+    log.error('parser-worker', 'Job failed', {
+        event: "job_failed",
+        jobId: job?.id,
+        traceId: job?.data.traceId,
+        message: err.message,
+    });
 });
 
 worker.on("stalled", (jobId) => {
-    console.warn(
-        JSON.stringify({
-            level: "warn",
-            service: "parser-worker",
-            event: "job_stalled",
-            jobId,
-            timestamp: new Date().toISOString(),
-        })
-    );
+    log.warn('parser-worker', 'Job stalled', {
+        event: "job_stalled",
+        jobId,
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -459,7 +435,7 @@ let isShuttingDown = false;
 async function gracefulShutdown(signal: NodeJS.Signals) {
     if (isShuttingDown) return;
     isShuttingDown = true;
-    console.info(`\n[${signal}] Initiating graceful shutdown... pausing worker.`);
+    log.info('parser-worker', `[${signal}] Initiating graceful shutdown... pausing worker.`);
 
     // 1. Pause worker to stop picking up new jobs
     await worker.pause(true);
@@ -468,15 +444,15 @@ async function gracefulShutdown(signal: NodeJS.Signals) {
 
     // 2. Start a hard kill timer
     const timeoutTimer = setTimeout(async () => {
-        console.warn(`[${signal}] Timeout ${GRACEFUL_TIMEOUT_MS}ms reached. Forcing SIGKILL on subprocesses.`);
+        log.warn('parser-worker', `[${signal}] Timeout ${GRACEFUL_TIMEOUT_MS}ms reached. Forcing SIGKILL on subprocesses.`);
         for (const child of activeSubprocesses) {
             if (!child.killed) child.kill("SIGKILL");
         }
 
         // Broad cleanup of tmp directory contents
-        await rm(path.join(tmpdir(), "parser-*"), { force: true, recursive: true }).catch(() => { });
+        await rm(path.join(tmpdir(), "parser-*"), { force: true, recursive: true }).catch(() => { /* best-effort cleanup */ });
 
-        console.warn(`[${signal}] Grace period expired. Exiting (code 1).`);
+        log.warn('parser-worker', `[${signal}] Grace period expired. Exiting (code 1).`);
         process.exit(1);
     }, GRACEFUL_TIMEOUT_MS);
 
@@ -488,10 +464,10 @@ async function gracefulShutdown(signal: NodeJS.Signals) {
         await db.$disconnect();
 
         clearTimeout(timeoutTimer);
-        console.info(`[${signal}] Graceful shutdown complete. Exiting cleanly (code 0).`);
+        log.info('parser-worker', `[${signal}] Graceful shutdown complete. Exiting cleanly (code 0).`);
         process.exit(0);
     } catch (err) {
-        console.error(`[${signal}] Error during shutdown operations:`, err);
+        log.error('parser-worker', `[${signal}] Error during shutdown operations`, { error: err instanceof Error ? err.message : String(err) });
         process.exit(1);
     }
 }
@@ -499,13 +475,9 @@ async function gracefulShutdown(signal: NodeJS.Signals) {
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-console.info(
-    JSON.stringify({
-        level: "info",
-        service: "parser-worker",
-        message: `Worker started (concurrency=${WORKER_CONCURRENCY}, lockDuration=${LOCK_DURATION_MS}ms)`,
-        timestamp: new Date().toISOString(),
-    })
-);
+log.info('parser-worker', 'Worker started', {
+    concurrency: WORKER_CONCURRENCY,
+    lockDuration: LOCK_DURATION_MS,
+});
 
 export default worker;

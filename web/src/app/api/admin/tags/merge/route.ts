@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
+import { log } from "@/lib/logger";
 
 const MergeTagsSchema = z.object({
     sourceTagId: z.string().uuid("來源標籤 ID 無效"),
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         return Res.ok({ message: "標籤合併成功" });
 
     } catch (err) {
-        console.error("Tags Merge Transaction Failed:", err);
+        log.error('admin', 'Tags merge transaction failed', { error: err instanceof Error ? err.message : String(err) });
         return Res.internal("標籤合併過程中發生錯誤，已回滾");
     }
 }

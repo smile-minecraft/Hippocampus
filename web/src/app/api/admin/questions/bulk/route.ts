@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/prisma";
 
 import { z } from "zod";
+import { log } from "@/lib/logger";
 
 const BulkDeleteSchema = z.object({
     questionIds: z.array(z.string().uuid()).min(1, "請至少選擇一題"),
@@ -45,7 +46,7 @@ export async function DELETE(req: NextRequest) {
         if (error instanceof z.ZodError) {
             return NextResponse.json({ ok: false, code: "VALIDATION_FAILED", message: error.errors[0].message }, { status: 400 });
         }
-        console.error("[BulkDeleteAPI] Error:", error);
+        log.error('admin', 'Bulk delete failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message: "批次刪除失敗" }, { status: 500 });
     }
 }
@@ -64,7 +65,7 @@ export async function PATCH(req: NextRequest) {
         const result = await db.$transaction(async (tx) => {
 
             // Build the update payload
-            const updateData: any = {};
+            const updateData: Record<string, unknown> = {};
             if (newYear !== undefined) updateData.year = newYear;
             if (newExamType !== undefined) updateData.examType = newExamType;
 
@@ -88,7 +89,7 @@ export async function PATCH(req: NextRequest) {
         if (error instanceof z.ZodError) {
             return NextResponse.json({ ok: false, code: "VALIDATION_FAILED", message: error.errors[0].message }, { status: 400 });
         }
-        console.error("[BulkTransferAPI] Error:", error);
+        log.error('admin', 'Bulk transfer failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message: "批次轉移失敗" }, { status: 500 });
     }
 }

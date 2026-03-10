@@ -1,6 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/cn'
+import { LatexText } from '@/components/ui/LatexText'
 
 interface OptionButtonProps {
     index: number        // 0-3
@@ -77,7 +78,7 @@ export function OptionButton({
             >
                 {letter}
             </span>
-            <span className="flex-1 leading-snug">{label}</span>
+            <LatexText className="flex-1 leading-snug">{label}</LatexText>
         </button>
     )
 }

@@ -2,6 +2,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button } from './Button'
+import { log } from '@/lib/logger'
 
 interface ErrorBoundaryProps {
     children: ReactNode
@@ -43,7 +44,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     componentDidCatch(error: Error, info: ErrorInfo) {
         // Structured log — include component stack for traceability
-        console.error('[ErrorBoundary] caught error', {
+        log.error('error-boundary', 'Caught error', {
             message: error.message,
             stack: error.stack,
             componentStack: info.componentStack,

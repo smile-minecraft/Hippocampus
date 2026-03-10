@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/prisma";
+import { log } from "@/lib/logger";
 
 export async function POST(
     request: NextRequest,
@@ -22,30 +23,31 @@ export async function POST(
             return NextResponse.json({ ok: false, error: "查無此草稿" }, { status: 404 });
         }
 
-        if (draft.status === "APPROVED" as any) {
+        if (draft.status === "APPROVED") {
             return NextResponse.json({ ok: false, error: "此草稿已經匯入過，不可重複匯入" }, { status: 400 });
         }
 
-        const draftData = draft.draftJson as any;
+        const draftData = draft.draftJson as { questions?: Array<{ stem?: string; options?: Record<string, string>; answer?: string; explanation?: string; imagePlaceholders?: string[]; tagSlugs?: string[] }>; metadata?: { year?: number | string; examType?: string } };
         if (!draftData || !Array.isArray(draftData.questions)) {
             return NextResponse.json({ ok: false, error: "草稿資料格式異常，無法匯入" }, { status: 400 });
         }
 
         // Try reading body for manual overrides
-        let bodyOverrides: any = {};
+        let bodyOverrides: { year?: string | number; examType?: string } = {};
         try {
             bodyOverrides = await request.json();
-        } catch { }
+        } catch { /* body may be empty */ }
 
         const metadata = draftData.metadata || {};
-        const yearOverride = bodyOverrides.year ? parseInt(bodyOverrides.year, 10) : undefined;
-        const year = yearOverride !== undefined ? yearOverride : (metadata.year ? parseInt(metadata.year, 10) : null);
+        const yearOverride = bodyOverrides.year ? parseInt(String(bodyOverrides.year), 10) : undefined;
+        const year = yearOverride !== undefined ? yearOverride : (metadata.year ? parseInt(String(metadata.year), 10) : null);
 
         const examType = bodyOverrides.examType !== undefined ? bodyOverrides.examType : (metadata.examType || null);
 
         // Perform transactional insertion
+        const questions = draftData.questions ?? [];
         await db.$transaction(async (tx) => {
-            for (const q of draftData.questions) {
+            for (const q of questions) {
                 // 1. Insert question
                 const newQuestion = await tx.question.create({
                     data: {
@@ -60,15 +62,21 @@ export async function POST(
                     },
                 });
 
-                // 2. Insert tags if specified
-                if (Array.isArray(q.tagIds) && q.tagIds.length > 0) {
-                    await tx.questionTag.createMany({
-                        data: q.tagIds.map((tagId: string) => ({
-                            questionId: newQuestion.id,
-                            tagId: tagId,
-                        })),
-                        skipDuplicates: true,
+                // 2. Insert tags if specified (look up by slug)
+                if (Array.isArray(q.tagSlugs) && q.tagSlugs.length > 0) {
+                    const tags = await tx.tag.findMany({
+                        where: { slug: { in: q.tagSlugs } },
+                        select: { id: true },
                     });
+                    if (tags.length > 0) {
+                        await tx.questionTag.createMany({
+                            data: tags.map((tag: { id: string }) => ({
+                                questionId: newQuestion.id,
+                                tagId: tag.id,
+                            })),
+                            skipDuplicates: true,
+                        });
+                    }
                 }
             }
 
@@ -76,16 +84,17 @@ export async function POST(
             await tx.parsedDraft.update({
                 where: { id: draftId },
                 data: {
-                    status: "APPROVED" as any,
+                    status: "APPROVED",
                 },
             });
         });
 
         return NextResponse.json({ ok: true, data: { status: "APPROVED" } });
-    } catch (error: any) {
-        console.error("[API /parser/drafts/[id]/publish] Error:", error);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "發生未知錯誤";
+        log.error('parser', 'Draft publish failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
-            { ok: false, error: error.message || "發生未知錯誤" },
+            { ok: false, error: message },
             { status: 500 }
         );
     }

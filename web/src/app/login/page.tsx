@@ -20,15 +20,15 @@ export default function LoginPage() {
                 body: JSON.stringify({ email, password })
             });
             const text = await res.text();
-            let data: any = {};
+            let data: Record<string, unknown> = {};
             try { data = JSON.parse(text); } catch { /* ignore */ }
 
             if (!res.ok || (data && !data.ok)) {
-                throw new Error(data.message || data.error?.message || data.error || '登入失敗，請檢查帳號密碼');
+                throw new Error((data.message as string) || (data.error as string) || '登入失敗，請檢查帳號密碼');
             }
             window.location.href = '/audit';
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : '登入失敗');
         } finally {
             setLoading(false);
         }

@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { type TagDimension, type Tag } from "@prisma/client";
-import { Loader2, ChevronDown, ChevronRight, Check } from "lucide-react";
-import { fetchApi } from "@/lib/apiClient";
+import { type TagDimension, type Tag } from "@/types";
+import { Loader2, ChevronDown, ChevronRight, Check, Search, X } from "lucide-react";
+import { fetchTags } from "@/lib/apiClient";
 
 export interface TagFilterProps {
-    selectedIds: string[];
-    onChange: (ids: string[]) => void;
+    selectedSlugs: string[];
+    onChange: (slugs: string[]) => void;
     className?: string;
 }
 
@@ -20,28 +20,50 @@ const DIMENSION_LABELS: Record<TagDimension, string> = {
     META: "標籤狀態",
 };
 
-export function GroupedTagMultiSelect({ selectedIds, onChange, className = "" }: TagFilterProps) {
+interface GroupedTag extends Tag {
+    groupName?: string;
+}
+
+export function GroupedTagMultiSelect({ selectedSlugs, onChange, className = "" }: TagFilterProps) {
     const [expandedDims, setExpandedDims] = useState<Record<string, boolean>>({
         ACADEMIC: true,
         ORGAN: true,
     });
+    const [searchQuery, setSearchQuery] = useState("");
 
-    // Fetch flat list of public tags
-    const { data: tags = [], isLoading } = useQuery<Tag[]>({
+    // Fetch tags via the public endpoint
+    const { data: tagsData, isLoading } = useQuery({
         queryKey: ["quiz-tags"],
-        queryFn: async () => {
-            const res = await fetchApi<{ tags: Tag[] }>("/api/tags");
-            return res.tags;
-        },
-        staleTime: 5 * 60 * 1000 // Cache for 5 mins
+        queryFn: fetchTags,
+        staleTime: 5 * 60 * 1000,
     });
 
-    // Transform flat tags into nested structure: Record<Dimension, Record<GroupName, Tag[]>>
-    const groupedTags = useMemo(() => {
-        const tree: Partial<Record<TagDimension, Record<string, Tag[]>>> = {};
+    const tags: GroupedTag[] = useMemo(() => {
+        if (!tagsData) return [];
+        return tagsData.tags.map(t => ({
+            ...t,
+            groupName: t.category || undefined,
+        }));
+    }, [tagsData]);
 
-        tags.forEach(tag => {
-            const dim = tag.dimension as TagDimension;
+    // Filter tags by search query (client-side)
+    const filteredTags = useMemo(() => {
+        if (!searchQuery.trim()) return tags;
+        const q = searchQuery.toLowerCase();
+        return tags.filter(tag =>
+            tag.name.toLowerCase().includes(q) ||
+            (tag.groupName && tag.groupName.toLowerCase().includes(q)) ||
+            tag.slug.toLowerCase().includes(q)
+        );
+    }, [tags, searchQuery]);
+
+    // Transform filtered tags into nested structure: Record<Dimension, Record<GroupName, Tag[]>>
+    const groupedTags = useMemo(() => {
+        const tree: Partial<Record<TagDimension, Record<string, GroupedTag[]>>> = {};
+
+        filteredTags.forEach(tag => {
+            const dim = tag.dimension as TagDimension | undefined;
+            if (!dim) return;
             const group = tag.groupName || "其他";
 
             if (!tree[dim]) tree[dim] = {};
@@ -51,27 +73,25 @@ export function GroupedTagMultiSelect({ selectedIds, onChange, className = "" }:
         });
 
         return tree;
-    }, [tags]);
+    }, [filteredTags]);
 
-    const handleToggleTag = (tagId: string) => {
-        if (selectedIds.includes(tagId)) {
-            onChange(selectedIds.filter(id => id !== tagId));
+    const handleToggleTag = (slug: string) => {
+        if (selectedSlugs.includes(slug)) {
+            onChange(selectedSlugs.filter(s => s !== slug));
         } else {
-            onChange([...selectedIds, tagId]);
+            onChange([...selectedSlugs, slug]);
         }
     };
 
-    const handleToggleGroup = (groupTags: Tag[]) => {
-        const groupIds = groupTags.map(t => t.id);
-        const allSelected = groupIds.every(id => selectedIds.includes(id));
+    const handleToggleGroup = (groupTags: GroupedTag[]) => {
+        const groupSlugs = groupTags.map(t => t.slug);
+        const allSelected = groupSlugs.every(s => selectedSlugs.includes(s));
 
         if (allSelected) {
-            // Remove all
-            onChange(selectedIds.filter(id => !groupIds.includes(id)));
+            onChange(selectedSlugs.filter(s => !groupSlugs.includes(s)));
         } else {
-            // Add missing
-            const newIds = new Set([...selectedIds, ...groupIds]);
-            onChange(Array.from(newIds));
+            const newSlugs = new Set([...selectedSlugs, ...groupSlugs]);
+            onChange(Array.from(newSlugs));
         }
     };
 
@@ -81,36 +101,69 @@ export function GroupedTagMultiSelect({ selectedIds, onChange, className = "" }:
 
     if (isLoading) {
         return (
-            <div className={`p-4 bg-slate-800/50 rounded-xl border border-slate-700/50 flex items-center justify-center ${className}`}>
-                <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+            <div className={`p-4 bg-bg-surface rounded-xl border border-border-base flex items-center justify-center ${className}`}>
+                <Loader2 className="w-5 h-5 animate-spin text-text-muted" />
             </div>
         );
     }
 
     return (
-        <div className={`bg-slate-800/30 rounded-xl border border-slate-700/50 overflow-hidden ${className}`}>
-            <div className="p-3 bg-slate-800/80 border-b border-slate-700/50 font-medium text-sm text-slate-200">
-                篩選標籤 ({selectedIds.length})
+        <div className={`bg-bg-surface rounded-xl border border-border-base overflow-hidden ${className}`}>
+            <div className="p-3 bg-bg-base border-b border-border-base space-y-2">
+                <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm text-text-base">
+                        篩選標籤 ({selectedSlugs.length})
+                    </span>
+                    {selectedSlugs.length > 0 && (
+                        <button
+                            onClick={() => onChange([])}
+                            className="text-xs text-text-muted hover:text-text-base transition"
+                        >
+                            清除全部
+                        </button>
+                    )}
+                </div>
+                <div className="relative">
+                    <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-text-muted" />
+                    <input
+                        type="text"
+                        placeholder="搜尋標籤..."
+                        className="w-full pl-8 pr-8 py-1.5 bg-bg-base border border-border-base rounded-lg text-xs text-text-base placeholder-text-muted focus:border-primary-base/50 focus:ring-1 focus:ring-primary-base/30 outline-none transition"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery("")}
+                            className="absolute right-2.5 top-2 text-text-muted hover:text-text-base transition"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </div>
             </div>
 
-            <div className="max-h-[400px] overflow-y-auto p-2 space-y-1 custom-scrollbar">
+            <div className="max-h-[400px] overflow-y-auto p-2 space-y-1">
                 {Object.entries(groupedTags).map(([dim, groups]) => (
                     <div key={dim} className="select-none">
                         {/* Dimension Header */}
                         <div
-                            className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-slate-700/30 cursor-pointer text-slate-300 transition"
+                            className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-bg-base cursor-pointer text-text-base transition"
                             onClick={() => toggleDimExpand(dim)}
                         >
                             {expandedDims[dim] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             <span className="font-semibold text-sm">{DIMENSION_LABELS[dim as TagDimension] || dim}</span>
+                            <span className="text-xs text-text-muted ml-1">
+                                ({Object.values(groups).reduce((sum, arr) => sum + arr.length, 0)})
+                            </span>
                         </div>
 
                         {/* Groups */}
                         {expandedDims[dim] && (
-                            <div className="pl-6 pr-2 py-1 space-y-3 border-l border-slate-700/50 ml-3.5 mb-2 mt-1">
+                            <div className="pl-6 pr-2 py-1 space-y-3 border-l border-border-base ml-3.5 mb-2 mt-1">
                                 {Object.entries(groups).map(([groupName, groupTags]) => {
-                                    const allChecked = groupTags.every(t => selectedIds.includes(t.id));
-                                    const someChecked = groupTags.some(t => selectedIds.includes(t.id));
+                                    const allChecked = groupTags.every(t => selectedSlugs.includes(t.slug));
+                                    const someChecked = groupTags.some(t => selectedSlugs.includes(t.slug));
                                     const indeterminate = someChecked && !allChecked;
 
                                     return (
@@ -121,29 +174,29 @@ export function GroupedTagMultiSelect({ selectedIds, onChange, className = "" }:
                                                 onClick={() => handleToggleGroup(groupTags)}
                                             >
                                                 <div className={`w-4 h-4 rounded-sm flex items-center justify-center transition-colors border
-                                                    ${allChecked ? "bg-teal-500 border-teal-500" :
-                                                        indeterminate ? "bg-teal-500/30 border-teal-500" : "border-slate-600 group-hover:border-slate-400"}`}
+                                                    ${allChecked ? "bg-primary-base border-primary-base" :
+                                                        indeterminate ? "bg-primary-base/30 border-primary-base" : "border-border-base group-hover:border-text-muted"}`}
                                                 >
                                                     {allChecked && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-                                                    {indeterminate && <div className="w-2 h-0.5 bg-teal-400 rounded-full" />}
+                                                    {indeterminate && <div className="w-2 h-0.5 bg-primary-base rounded-full" />}
                                                 </div>
-                                                <span className="text-sm font-medium text-slate-400 group-hover:text-slate-300 transition">
-                                                    {groupName} <span className="text-xs text-slate-500 ml-1">({groupTags.length})</span>
+                                                <span className="text-sm font-medium text-text-muted group-hover:text-text-base transition">
+                                                    {groupName} <span className="text-xs text-text-muted ml-1">({groupTags.length})</span>
                                                 </span>
                                             </div>
 
                                             {/* Individual Tags */}
                                             <div className="pl-6 flex flex-wrap gap-1.5 pt-0.5">
                                                 {groupTags.map(tag => {
-                                                    const isChecked = selectedIds.includes(tag.id);
+                                                    const isChecked = selectedSlugs.includes(tag.slug);
                                                     return (
                                                         <button
-                                                            key={tag.id}
-                                                            onClick={() => handleToggleTag(tag.id)}
+                                                            key={tag.slug}
+                                                            onClick={() => handleToggleTag(tag.slug)}
                                                             className={`px-2 py-1 flex items-center gap-1.5 rounded text-xs transition-colors border
                                                                 ${isChecked
-                                                                    ? "bg-teal-500/20 shadow-sm border-teal-500/30 text-teal-300"
-                                                                    : "bg-slate-800/50 hover:bg-slate-700 text-slate-400 border-slate-700"
+                                                                    ? "bg-primary-base/10 shadow-sm border-primary-base/30 text-primary-base"
+                                                                    : "bg-bg-surface hover:bg-bg-base text-text-muted border-border-base"
                                                                 }`}
                                                         >
                                                             {tag.name}
@@ -159,8 +212,14 @@ export function GroupedTagMultiSelect({ selectedIds, onChange, className = "" }:
                     </div>
                 ))}
 
+                {filteredTags.length === 0 && tags.length > 0 && (
+                    <div className="p-4 text-center text-sm text-text-muted">
+                        找不到符合「{searchQuery}」的標籤
+                    </div>
+                )}
+
                 {tags.length === 0 && (
-                    <div className="p-4 text-center text-sm text-slate-500">
+                    <div className="p-4 text-center text-sm text-text-muted">
                         目前系統中沒有可用的標籤
                     </div>
                 )}
