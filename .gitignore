@@ -5,3 +5,13 @@ venv/
 .DS_Store
 web/.next/
 /test/test-pdf
+.agents/
+.env*
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+build/
+dist/
+.cache/
