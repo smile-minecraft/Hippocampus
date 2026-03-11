@@ -6,29 +6,33 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
+import { cached, invalidateCache } from "@/lib/cache";
 
-
-import { type TagDimension } from "@prisma/client";
+import { type Tag, type TagDimension } from "@prisma/client";
 import { CreateTagSchema } from "@/lib/schemas";
 
 
 export async function GET(): Promise<Response> {
-    const tags = await db.tag.findMany({
-        orderBy: [{ name: "asc" }],
-    });
+    const data = await cached('tags:all', async () => {
+        const tags = await db.tag.findMany({
+            orderBy: [{ name: "asc" }],
+        });
 
-    // Group by dimension for frontend convenience
-    const grouped = tags.reduce<Record<TagDimension, typeof tags>>(
-        (acc, tag) => {
-            const dim = tag.dimension as TagDimension;
-            if (!acc[dim]) acc[dim] = [];
-            acc[dim].push(tag);
-            return acc;
-        },
-        {} as Record<TagDimension, typeof tags>
-    );
+        // Group by dimension for frontend convenience
+        const grouped = tags.reduce<Record<TagDimension, Tag[]>>(
+            (acc: Record<TagDimension, Tag[]>, tag: Tag) => {
+                const dim = tag.dimension as TagDimension;
+                if (!acc[dim]) acc[dim] = [];
+                acc[dim].push(tag);
+                return acc;
+            },
+            {} as Record<TagDimension, Tag[]>
+        );
 
-    return Res.ok({ tags, grouped });
+        return { tags, grouped };
+    }, { ttl: 300 }); // 5 min cache
+
+    return Res.ok(data);
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
@@ -44,6 +48,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     try {
         const tag = await db.tag.create({ data: parsed.data });
+        await invalidateCache('tags:all');
         return Res.created(tag);
     } catch (err: unknown) {
         if (

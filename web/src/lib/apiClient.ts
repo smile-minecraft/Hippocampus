@@ -94,8 +94,18 @@ export async function fetchApi<T>(
                 })
             }
     } catch (_e) {
-        // Proceed to throw the original 401 error if refresh fails completely
+        // Refresh failed completely — redirect to login
     }
+
+        // If we reach here, refresh failed. Redirect to login for browser requests.
+        if (typeof window !== 'undefined') {
+            const currentPath = window.location.pathname + window.location.search
+            if (currentPath !== '/login' && currentPath !== '/register') {
+                window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+                // Throw to prevent further execution
+                throw new ApiClientError('UNAUTHORIZED', '登入已過期，正在重新導向...', 401)
+            }
+        }
     }
 
     // Treat non-2xx as structured errors by reading as text first to avoid JSON parse crashes
@@ -472,5 +482,36 @@ export async function updateAdminQuestion(id: string, payload: Partial<Question>
 export async function deleteAdminQuestion(id: string): Promise<void> {
     return fetchApi<void>(`/api/admin/questions/${id}`, {
         method: 'DELETE'
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Admin User Management
+// ---------------------------------------------------------------------------
+
+export interface AdminUser {
+    id: string;
+    email: string;
+    name: string | null;
+    role: 'USER' | 'MODERATOR' | 'ADMIN';
+    createdAt: string;
+    _count: { questionRecords: number };
+}
+
+export interface AdminUserListResponse {
+    users: AdminUser[];
+    pagination: { total: number; page: number; limit: number; totalPages: number };
+}
+
+export async function fetchAdminUsers(page = 1, limit = 20, search = ''): Promise<AdminUserListResponse> {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (search) params.append('search', search);
+    return fetchApi<AdminUserListResponse>(`/api/admin/users?${params.toString()}`);
+}
+
+export async function updateAdminUserRole(userId: string, role: 'USER' | 'MODERATOR' | 'ADMIN'): Promise<{ id: string; email: string; role: string }> {
+    return fetchApi<{ id: string; email: string; role: string }>(`/api/admin/users/${userId}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
     });
 }

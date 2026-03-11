@@ -11,7 +11,7 @@ export { createQuizSlice } from './quizSlice'
 export type { QuizSlice, QuestionResult } from './quizSlice'
 
 export { useUIStore } from './uiSlice'
-export type { UISlice, Theme } from './uiSlice'
+export type { UISlice, Theme, LLMStatus } from './uiSlice'
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'

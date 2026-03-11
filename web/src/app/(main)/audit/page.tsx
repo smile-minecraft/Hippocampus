@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AuditWorkstation } from '@/components/audit/AuditWorkstation'
 import { DocumentUploader } from '@/components/audit/DocumentUploader'
-import { TopNav } from '@/components/ui/TopNav'
+import { LLMStatusBar } from '@/components/ui/LLMStatusBar'
 
 export const metadata: Metadata = {
     title: '審核工作站',
@@ -12,8 +12,7 @@ export const metadata: Metadata = {
 export default function AuditPage() {
     return (
         <>
-            <TopNav />
-            <main className="min-h-screen bg-bg-base px-4 py-6 transition-colors duration-300">
+            <main className="min-h-screen bg-bg-base px-4 py-6 pb-12 transition-colors duration-300">
                 <div className="max-w-7xl mx-auto space-y-6">
                     <header className="flex justify-between items-center space-y-1">
                         <div>
@@ -25,6 +24,15 @@ export default function AuditPage() {
                             </p>
                         </div>
                         <div className="flex gap-3">
+                            <Link
+                                href="/audit/users"
+                                className="inline-flex items-center px-4 py-2 bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors text-sm font-medium shadow-sm"
+                            >
+                                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                </svg>
+                                用戶管理
+                            </Link>
                             <Link
                                 href="/audit/tags"
                                 className="inline-flex items-center px-4 py-2 bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors text-sm font-medium shadow-sm"
@@ -50,6 +58,7 @@ export default function AuditPage() {
                     <AuditWorkstation />
                 </div>
             </main>
+            <LLMStatusBar />
         </>
     )
 }

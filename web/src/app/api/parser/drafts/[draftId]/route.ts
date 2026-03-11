@@ -26,9 +26,9 @@ export async function DELETE(
             return Res.notFound("查無此草稿");
         }
 
-        if (draft.status === "APPROVED") {
-            return Res.conflict("此草稿已經匯入題庫，無法被刪除");
-        }
+        // Note: Deleting APPROVED drafts is allowed since the imported questions
+        // are separate records in the Question table. The draft and questions
+        // are independent objects - deleting the draft does not affect them.
 
         // 3. Extract MinIO object keys from the draft (if any)
         // Original raw file (e.g., pdf or docx)

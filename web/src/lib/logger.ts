@@ -6,6 +6,11 @@
  *   Emits newline-delimited JSON (NDJSON) to stdout/stderr for structured
  *   log aggregation (compatible with Cloud Run, Datadog, etc.).
  *
+ * Worker TUI mode:
+ *   When a TUI sink is registered via `setLogSink()`, log entries are pushed
+ *   to the sink callback instead of writing to stdout/stderr.  This prevents
+ *   NDJSON from corrupting the ink-rendered TUI.
+ *
  * Client-side:
  *   Falls back to console.* with a `[service]` prefix. Can be extended later
  *   to forward to a remote error-tracking service (Sentry, LogRocket, etc.).
@@ -28,14 +33,35 @@ interface LogEntry {
     [key: string]: unknown
 }
 
+export type LogSinkFn = (entry: { level: LogLevel; service: string; message: string; timestamp: string; meta?: Record<string, unknown> }) => void
+
+let _sink: LogSinkFn | null = null
+
+/**
+ * Register a sink that intercepts ALL log output.
+ * When set, stdout/stderr NDJSON is suppressed — the sink owns output.
+ * Pass `null` to restore default NDJSON behaviour.
+ */
+export function setLogSink(sink: LogSinkFn | null): void {
+    _sink = sink
+}
+
 const isServer = typeof window === 'undefined'
 
 function emit(level: LogLevel, service: string, message: string, meta?: Record<string, unknown>): void {
+    const timestamp = new Date().toISOString()
+
+    // If a TUI sink is registered, delegate entirely to it
+    if (_sink) {
+        _sink({ level, service, message, timestamp, meta })
+        return
+    }
+
     const entry: LogEntry = {
         level,
         service,
         message,
-        timestamp: new Date().toISOString(),
+        timestamp,
         ...meta,
     }
 

@@ -1,43 +1,56 @@
 /**
- * embedding.ts — Gemini text-embedding-004 Service + Semantic Chunking
+ * embedding.ts — Multi-Provider Embedding Service + Semantic Chunking
  *
  * Responsibilities:
- *  1. `embed(text)` — converts a string to a float32[1536] vector via Gemini API.
+ *  1. `embed(text)` — converts a string to a float32[1536] vector via the
+ *     configured embedding provider (default: OpenAI text-embedding-3-small).
  *  2. `semanticChunk(markdown)` — splits long content into index-able chunks
  *     without severing semantic meaning mid-sentence.
  *  3. `cosineSimilarity(a, b)` — retained ONLY for unit-test comparison purposes.
  *     All production similarity queries use pgvector's `<=>` operator in SQL.
  *
  * Design Notes:
- *  - Agent A's HNSW migration creates `Question_embedding_hnsw_idx` on the
- *    inline `embedding vector(1536)` column.  We write to that column directly.
- *  - Gemini `text-embedding-004` outputs 768 dimensions by default, but the
- *    schema declares vector(1536) — we use `outputDimensionality: 1536` to match.
+ *  - HNSW index on `embedding vector(1536)` columns (WikiArticle + Question).
+ *  - Primary model: OpenAI text-embedding-3-small (1536 dimensions natively).
  *  - Embedding generation is intentionally lazy: it runs as a background task
  *    after a question is created, not in the same HTTP request cycle.
+ *  - When LLM_PROVIDER=gemini, falls back to Gemini text-embedding-004;
+ *    output is padded/truncated to match EMBEDDING_DIMENSIONS (1536).
  *
  * Edge-Case Coverage:
- *  - API failure: exponential backoff via cockatiel (already in package.json).
+ *  - API failure: propagates as Error for caller to handle (cockatiel at call site).
  *  - Empty input: guard clause rejects blank strings before API call.
- *  - Oversized content: semantic chunking prevents exceeding Gemini's token limit.
+ *  - Oversized content: semantic chunking prevents exceeding model token limit.
  *  - OOM: chunks are processed sequentially, not concurrently, to bound memory.
  */
 
-import {
-    GoogleGenerativeAI,
-    TaskType,
-} from "@google/generative-ai";
+import { log } from "@/lib/logger";
+import { EmbedTaskType } from "@/lib/ai/types";
 
-// ─── Client Init ──────────────────────────────────────────────────────────────
+// Re-export EmbedTaskType so existing callers can import from here
+export { EmbedTaskType };
 
-function getClient(): GoogleGenerativeAI {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error("[Embedding] GEMINI_API_KEY is not set.");
-    return new GoogleGenerativeAI(key);
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+function getProvider(): "openai" | "gemini" {
+    const raw = process.env.LLM_PROVIDER ?? "openai";
+    if (raw === "gemini") return "gemini";
+    return "openai";
 }
 
-const EMBEDDING_MODEL = "text-embedding-004";
-const EMBEDDING_DIMENSIONS = 1536;
+function getApiUrl(): string {
+    return process.env.OPENAI_API_URL ?? "https://api.openai.com/v1";
+}
+
+function getApiKey(): string {
+    return process.env.OPENAI_API_KEY ?? "";
+}
+
+function getEmbeddingModel(): string {
+    return process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
+}
+
+export const EMBEDDING_DIMENSIONS = 1536;
 
 // ─── Semantic Chunking ────────────────────────────────────────────────────────
 
@@ -129,41 +142,129 @@ export function semanticChunk(markdown: string): TextChunk[] {
         .map((text, index) => ({ index, text }));
 }
 
+// ─── OpenAI-compatible Embedding ─────────────────────────────────────────────
+
+interface OAIEmbeddingResponse {
+    data: Array<{ embedding: number[]; index: number }>;
+    usage?: { prompt_tokens: number; total_tokens: number };
+}
+
+/**
+ * Calls an OpenAI-compatible /v1/embeddings endpoint.
+ */
+async function embedViaOpenAI(text: string): Promise<number[]> {
+    const apiUrl = getApiUrl();
+    const model = getEmbeddingModel();
+
+    let response: Response;
+    try {
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+        };
+        const apiKey = getApiKey();
+        if (apiKey) {
+            headers["Authorization"] = `Bearer ${apiKey}`;
+        }
+
+        response = await fetch(`${apiUrl}/embeddings`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                model,
+                input: text,
+            }),
+        });
+    } catch (fetchErr) {
+        const err = fetchErr as Error;
+        log.error("embedding", `Failed to connect to ${apiUrl}`, {
+            error: err.message,
+            cause: err.cause,
+        });
+        throw new Error(
+            `[Embedding] Failed to connect to ${apiUrl}: ${err.message}. Is the AI service reachable?`
+        );
+    }
+
+    if (!response.ok) {
+        const errorBody = await response.text().catch(() => "");
+        throw new Error(
+            `[Embedding] OpenAI-compatible API returned HTTP ${response.status}: ${errorBody.slice(0, 200)}`
+        );
+    }
+
+    const json = (await response.json()) as OAIEmbeddingResponse;
+    const values = json.data?.[0]?.embedding;
+
+    if (!values || values.length === 0) {
+        throw new Error("[Embedding] API returned empty embedding vector.");
+    }
+
+    // Truncate or pad to EMBEDDING_DIMENSIONS
+    if (values.length < EMBEDDING_DIMENSIONS) {
+        return [...values, ...new Array(EMBEDDING_DIMENSIONS - values.length).fill(0)];
+    }
+    return values.slice(0, EMBEDDING_DIMENSIONS);
+}
+
+// ─── Gemini Embedding (fallback) ─────────────────────────────────────────────
+
+/**
+ * Falls back to Gemini text-embedding-004 when LLM_PROVIDER=gemini.
+ * Lazy-imports @google/generative-ai to avoid requiring it when not in use.
+ */
+async function embedViaGemini(text: string, taskType: EmbedTaskType): Promise<number[]> {
+    const { GoogleGenerativeAI, TaskType } = await import("@google/generative-ai");
+
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) throw new Error("[Embedding] GEMINI_API_KEY is not set.");
+
+    const client = new GoogleGenerativeAI(key);
+    const model = client.getGenerativeModel({ model: "text-embedding-004" });
+
+    const geminiTaskType = taskType === EmbedTaskType.RETRIEVAL_QUERY
+        ? TaskType.RETRIEVAL_QUERY
+        : TaskType.RETRIEVAL_DOCUMENT;
+
+    const result = await model.embedContent({
+        content: { role: "user", parts: [{ text }] },
+        taskType: geminiTaskType,
+    });
+
+    const values = result.embedding.values;
+
+    // Pad or truncate to EMBEDDING_DIMENSIONS (1536)
+    if (values.length < EMBEDDING_DIMENSIONS) {
+        return [...values, ...new Array(EMBEDDING_DIMENSIONS - values.length).fill(0)];
+    }
+    return values.slice(0, EMBEDDING_DIMENSIONS);
+}
+
 // ─── Embed Single Text ────────────────────────────────────────────────────────
 
 /**
  * Converts a text string to a 1536-dimensional embedding vector.
  *
- * @param text    The text to embed.  Max ~8192 tokens.
- * @param taskType Gemini task hint.  Use RETRIEVAL_DOCUMENT when indexing,
- *                RETRIEVAL_QUERY when embedding a user search query.
+ * @param text     The text to embed. Max ~8192 tokens.
+ * @param taskType Use RETRIEVAL_DOCUMENT when indexing,
+ *                 RETRIEVAL_QUERY when embedding a user search query.
  */
 export async function embed(
     text: string,
-    taskType: TaskType = TaskType.RETRIEVAL_DOCUMENT
+    taskType: EmbedTaskType = EmbedTaskType.RETRIEVAL_DOCUMENT,
 ): Promise<number[]> {
     const trimmed = text.trim();
     if (!trimmed) {
         throw new Error("[Embedding] Cannot embed an empty string.");
     }
 
-    const client = getClient();
-    const model = client.getGenerativeModel({ model: EMBEDDING_MODEL });
+    const provider = getProvider();
 
-    const result = await model.embedContent({
-        content: { role: "user", parts: [{ text: trimmed }] },
-        taskType,
-        // outputDimensionality is not yet in the TS types for this SDK version;
-        // override via request options when the SDK adds support.
-    });
-
-    const values = result.embedding.values;
-
-    // Pad or truncate to match schema's vector(1536) declaration
-    if (values.length < EMBEDDING_DIMENSIONS) {
-        return [...values, ...new Array(EMBEDDING_DIMENSIONS - values.length).fill(0)];
+    if (provider === "gemini") {
+        return embedViaGemini(trimmed, taskType);
     }
-    return values.slice(0, EMBEDDING_DIMENSIONS);
+
+    // Default: OpenAI-compatible (text-embedding-3-small)
+    return embedViaOpenAI(trimmed);
 }
 
 // ─── Batch Embed ──────────────────────────────────────────────────────────────
@@ -173,16 +274,21 @@ export async function embed(
  * Returns an array of vectors in the same order as input.
  */
 export async function embedChunks(
-    chunks: TextChunk[]
+    chunks: TextChunk[],
 ): Promise<{ index: number; vector: number[] }[]> {
     const results: { index: number; vector: number[] }[] = [];
 
     for (const chunk of chunks) {
-        const vector = await embed(chunk.text, TaskType.RETRIEVAL_DOCUMENT);
+        const vector = await embed(chunk.text, EmbedTaskType.RETRIEVAL_DOCUMENT);
         results.push({ index: chunk.index, vector });
         // Polite delay between API calls to stay within rate limits
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
+
+    log.info("embedding", `Embedded ${results.length} chunks`, {
+        dimensions: EMBEDDING_DIMENSIONS,
+        provider: getProvider(),
+    });
 
     return results;
 }

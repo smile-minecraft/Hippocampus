@@ -201,7 +201,10 @@ export async function ensureBucketsExist(): Promise<void> {
 }
 
 // Smoke test when run directly
-if (require.main === module) {
+// ESM equivalent of `require.main === module`
+const isDirectRun = import.meta.url === `file://${process.argv[1]}` ||
+    process.argv[1]?.endsWith('minio/client.ts');
+if (isDirectRun) {
     ensureBucketsExist()
         .then(() => log.info('minio', 'All buckets verified'))
         .catch((err) => {

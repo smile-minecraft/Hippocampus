@@ -22,16 +22,29 @@ import { immer } from 'zustand/middleware/immer'
 
 export type Theme = 'dark' | 'light' | 'system'
 
+export interface LLMStatus {
+    healthy: boolean;
+    latencyMs: number;
+    lastCheck: string;
+    error?: string;
+    model?: string;
+    availableModels?: string[];
+}
+
 export interface UISlice {
     // Persisted
     theme: Theme
     sidebarCollapsed: boolean
     fontSizeScale: number   // 0.8 – 1.4, step 0.1
 
+    // Transient (not persisted)
+    llmStatus: LLMStatus
+
     // Actions
     setTheme: (theme: Theme) => void
     toggleSidebar: () => void
     setFontScale: (scale: number) => void
+    setLLMStatus: (status: LLMStatus) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -46,6 +59,13 @@ export const useUIStore = create<UISlice>()(
                 theme: 'system',
                 sidebarCollapsed: false,
                 fontSizeScale: 1.0,
+
+                // ---- Transient state (not persisted) ----
+                llmStatus: {
+                    healthy: false,
+                    latencyMs: 0,
+                    lastCheck: '',
+                },
 
                 // ---- Actions ----
                 setTheme: (theme) =>
@@ -62,6 +82,11 @@ export const useUIStore = create<UISlice>()(
                     set((state) => {
                         // Clamp to valid range — defensive against external callers
                         state.fontSizeScale = Math.max(0.8, Math.min(1.4, scale))
+                    }),
+
+                setLLMStatus: (status) =>
+                    set((state) => {
+                        state.llmStatus = status
                     }),
             })),
             {

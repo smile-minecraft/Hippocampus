@@ -35,7 +35,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             });
 
             if (sourceQTags.length > 0) {
-                const sourceQIds = sourceQTags.map(sq => sq.questionId);
+                const sourceQIds = sourceQTags.map((sq: { questionId: string }) => sq.questionId);
                 // 找出哪些已經也有 targetTagId 了 (衝突集)
                 const conflictQTags = await tx.questionTag.findMany({
                     where: {
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest): Promise<Response> {
                     },
                     select: { questionId: true }
                 });
-                const conflictQIds = conflictQTags.map(cq => cq.questionId);
+                const conflictQIds = conflictQTags.map((cq: { questionId: string }) => cq.questionId);
 
                 // 解除衝突：將兩者皆有的題目身上的 sourceTagId 關聯直接刪除
                 if (conflictQIds.length > 0) {
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             });
 
             if (sourceWTags.length > 0) {
-                const sourceWIds = sourceWTags.map(sw => sw.wikiArticleId);
+                const sourceWIds = sourceWTags.map((sw: { wikiArticleId: string }) => sw.wikiArticleId);
                 const conflictWTags = await tx.wikiTag.findMany({
                     where: {
                         tagId: targetTagId,
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest): Promise<Response> {
                     },
                     select: { wikiArticleId: true }
                 });
-                const conflictWIds = conflictWTags.map(cw => cw.wikiArticleId);
+                const conflictWIds = conflictWTags.map((cw: { wikiArticleId: string }) => cw.wikiArticleId);
 
                 if (conflictWIds.length > 0) {
                     await tx.wikiTag.deleteMany({

@@ -4,6 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { log } from '@/lib/logger'
 import { cn } from '@/lib/cn'
 import { LatexText } from '@/components/ui/LatexText'
+
+function getCsrfToken(): string {
+    if (typeof document === 'undefined') return ''
+    const match = document.cookie.match(/(?:^|;\s*)__csrf_token=([^;]+)/)
+    return match ? match[1] : ''
+}
 import {
     AlertCircle,
     Loader2,
@@ -121,8 +127,21 @@ export function AuditWorkstation() {
         setLoading(true)
         setError(null)
         try {
-            const res = await fetch(`/api/parser/drafts?limit=50&status=${statusFilter}`)
+            const res = await fetch(`/api/parser/drafts?limit=50&status=${statusFilter}`, {
+                credentials: 'include',
+            })
             const data = await res.json()
+
+            // Middleware 401 returns { success: false, error: { code, message } }
+            if (!res.ok && data?.success === false) {
+                const errObj = data.error
+                const msg = typeof errObj === 'object' && errObj?.message
+                    ? String(errObj.message)
+                    : typeof errObj === 'string' ? errObj : `HTTP ${res.status}`
+                setError(msg)
+                return
+            }
+
             if (data.ok && Array.isArray(data.data)) {
                 setDrafts(data.data)
                 // Auto-select first draft if current selection is gone
@@ -135,7 +154,7 @@ export function AuditWorkstation() {
                     setActiveDraftId(null)
                 }
             } else {
-                setError('無法載入草稿資料')
+                setError(typeof data.error === 'string' ? data.error : '無法載入草稿資料')
             }
         } catch {
             setError('API 連線失敗')
@@ -250,7 +269,11 @@ export function AuditWorkstation() {
         try {
             const res = await fetch(`/api/parser/drafts/${activeDraftId}/publish`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': getCsrfToken(),
+                },
                 body: JSON.stringify({
                     year: importYear ? parseInt(importYear, 10) : undefined,
                     examType: importExamType || undefined
@@ -285,7 +308,9 @@ export function AuditWorkstation() {
         setDeleting(true)
         try {
             const res = await fetch(`/api/parser/drafts/${activeDraftId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                credentials: 'include',
+                headers: { 'x-csrf-token': getCsrfToken() },
             })
             if (!res.ok) throw new Error('刪除失敗')
             removeDraftFromView(activeDraftId)
@@ -302,7 +327,11 @@ export function AuditWorkstation() {
         try {
             const res = await fetch('/api/parser/drafts', {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': getCsrfToken(),
+                },
                 body: JSON.stringify({
                     draftId: rejectingDraftId,
                     status: 'REJECTED',
@@ -368,7 +397,11 @@ export function AuditWorkstation() {
             try {
                 const res = await fetch(`/api/parser/drafts/${draftId}/publish`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-csrf-token': getCsrfToken(),
+                    },
                     body: JSON.stringify({})
                 })
                 if (res.ok) {
@@ -398,7 +431,11 @@ export function AuditWorkstation() {
 
         for (const draftId of selectedDraftIds) {
             try {
-                const res = await fetch(`/api/parser/drafts/${draftId}`, { method: 'DELETE' })
+                const res = await fetch(`/api/parser/drafts/${draftId}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                    headers: { 'x-csrf-token': getCsrfToken() },
+                })
                 if (res.ok) {
                     successCount++
                 } else {

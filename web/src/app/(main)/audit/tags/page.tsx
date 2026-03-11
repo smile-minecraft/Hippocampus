@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2, AlertTriangle, Edit2, Merge, Trash2 } from "lucide-react";
 import { fetchAdminTags, createAdminTag, updateAdminTag, deleteAdminTag, mergeAdminTags, AdminTagListResponse } from "@/lib/apiClient";
 import { CreateTagPayload } from "@/lib/schemas";
-import { TopNav } from "@/components/ui/TopNav";
 
 export default function TagsManagerPage() {
     const queryClient = useQueryClient();
@@ -85,7 +84,6 @@ export default function TagsManagerPage() {
 
     return (
         <>
-            <TopNav />
             <main className="min-h-screen bg-bg-base pb-12 transition-colors duration-300">
                 <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto text-slate-100">
                     <div className="flex justify-between items-center">

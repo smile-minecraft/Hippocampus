@@ -16,9 +16,14 @@ export async function POST(
     req: NextRequest
 ): Promise<NextResponse<ApiResponse<ParserJobResponsePayload>>> {
     try {
-        // 1. Authentication (Skipped for demo/local testing)
-        // In a real app we would verify JWT here
-        const userId = "00000000-0000-0000-0000-000000000000";
+        // 1. Authentication — use real user ID from middleware
+        const userId = req.headers.get("x-user-id");
+        if (!userId) {
+            return NextResponse.json(
+                { ok: false, code: "UNAUTHORIZED", message: "請先登入" },
+                { status: 401 }
+            );
+        }
 
         // Convert incoming web ReadableStream to Node.js Readable
         const bb = busboy({ headers: { "content-type": req.headers.get("content-type") || "" } });
@@ -63,7 +68,7 @@ export async function POST(
                     }
 
                     // Pipe directly to MinIO
-                    const prefix = userId; // In real app, from auth token
+                    const prefix = userId;
                     const extension = originalFilename.split(".").pop()?.toLowerCase() || "pdf";
                     const objectKey = `uploads/${prefix}/${traceId}.${extension}`;
 
@@ -88,7 +93,7 @@ export async function POST(
 
             bb.on("error", reject);
 
-            const nodeStream = Readable.fromWeb(req.body as ReadableStream);
+            const nodeStream = Readable.fromWeb(req.body as import("stream/web").ReadableStream);
             nodeStream.pipe(bb);
         });
 

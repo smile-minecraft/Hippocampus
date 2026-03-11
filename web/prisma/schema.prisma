@@ -91,7 +91,7 @@ model WikiArticle {
   updatedAt DateTime      @updatedAt
   deletedAt DateTime?     // 軟刪除
 
-  // pgvector: text-embedding-004 output dim = 1536
+  // pgvector: text-embedding-3-small output dim = 1536
   // INDEX 在 migration raw SQL 中以 HNSW 建立
   embedding Unsupported("vector(1536)")?
 
@@ -124,7 +124,7 @@ model Question {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime? // 軟刪除
 
-  // pgvector embedding
+  // pgvector embedding (1536 dimensions — text-embedding-3-small)
   embedding Unsupported("vector(1536)")?
 
   // FK to WikiArticle (雙向聯動)

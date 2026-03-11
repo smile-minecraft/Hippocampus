@@ -2,7 +2,6 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchAdminExams, deleteAdminExam, type ExamSummary } from '@/lib/apiClient'
-import { TopNav } from '@/components/ui/TopNav'
 import { Loader2, Trash2, FolderEdit } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -63,9 +62,7 @@ export default function ExamsAdminPage() {
     }
 
     return (
-        <>
-            <TopNav />
-            <main className="min-h-screen bg-bg-base px-4 py-6 transition-colors duration-300">
+        <main className="min-h-screen bg-bg-base px-4 py-6 transition-colors duration-300">
                 <div className="max-w-5xl mx-auto space-y-6">
                     <header className="flex justify-between items-center space-y-1">
                         <div>
@@ -144,7 +141,6 @@ export default function ExamsAdminPage() {
                         </div>
                     )}
                 </div>
-            </main>
-        </>
+        </main>
     )
 }

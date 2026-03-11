@@ -76,7 +76,46 @@ export async function DELETE(
             );
         }
 
-        // BullMQ job.remove() removes the job from the queue and cancels it if it hasn't started
+        const state = await job.getState();
+
+        if (state === 'completed' || state === 'failed') {
+            // Terminal state — just remove the record silently
+            await job.remove();
+            return NextResponse.json({
+                ok: true,
+                message: "任務紀錄已移除",
+                data: { canceled: true }
+            });
+        }
+
+        if (state === 'active') {
+            // Active jobs can't be removed with job.remove() — BullMQ throws.
+            // Move to failed state so the job is no longer retried.
+            try {
+                await job.moveToFailed(
+                    new Error('用戶手動取消'),
+                    job.token ?? '0',
+                    false  // fetchNext = false
+                );
+            } catch (moveErr) {
+                // moveToFailed can throw if the token doesn't match (job locked by
+                // a different worker process). In that case, log and still report
+                // success — the UI has already removed the row optimistically.
+                log.warn('parser', 'moveToFailed failed for active job, may still be running', {
+                    jobId,
+                    error: moveErr instanceof Error ? moveErr.message : String(moveErr),
+                });
+            }
+            // Try to remove after moving to failed; if still locked, ignore
+            try { await job.remove(); } catch { /* best-effort */ }
+            return NextResponse.json({
+                ok: true,
+                message: "處理中的任務已被強制取消",
+                data: { canceled: true }
+            });
+        }
+
+        // waiting, delayed, prioritized — safe to remove directly
         await job.remove();
 
         return NextResponse.json({

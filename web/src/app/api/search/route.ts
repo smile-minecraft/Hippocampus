@@ -4,7 +4,7 @@
  * Flow:
  *  1. Rate limit (20 req/min — Embedding API cost protection).
  *  2. Validate query string (1–500 chars).
- *  3. Embed query via Gemini text-embedding-004 (TaskType.RETRIEVAL_QUERY).
+ *  3. Embed query via configured provider (EmbedTaskType.RETRIEVAL_QUERY).
  *  4. Run pgvector cosine distance query with optional tag metadata filter.
  *  5. Return top-K results with similarity scores.
  *
@@ -17,16 +17,15 @@
  *
  * Edge-Case Coverage:
  *  - No embeddings indexed yet: returns empty results (not an error).
- *  - Gemini API failure: propagates as 500 with structured log.
+ *  - Embedding API failure: propagates as 500 with structured log.
  *  - Empty query: Zod rejects min(1).
  *  - XSS via query string: Zod max(500) + embedding API treats it as text.
  */
 
 import { NextRequest } from "next/server";
-import { TaskType } from "@google/generative-ai";
 import { Res } from "@/lib/api-response";
 import { rateLimit, getClientIp, LIMITS } from "@/lib/rate-limit";
-import { embed } from "@/lib/embedding";
+import { embed, EmbedTaskType } from "@/lib/embedding";
 import { db } from "@/lib/db";
 
 import { SearchSchema } from "@/lib/schemas";
@@ -62,7 +61,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   // ── Generate query embedding ───────────────────────────────────────────────
   let queryVector: number[];
   try {
-    queryVector = await embed(q, TaskType.RETRIEVAL_QUERY);
+    queryVector = await embed(q, EmbedTaskType.RETRIEVAL_QUERY);
   } catch (err) {
     log.error('search', 'Embedding generation failed', { error: err instanceof Error ? err.message : String(err) });
     return Res.internal("向量生成失敗，請稍後再試");
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   try {
     /**
-     * The embedding column is Unsupported("vector(1536)") in Prisma schema,
+     * The embedding column is Unsupported("vector(1024)") in Prisma schema,
      * so we MUST use $queryRaw.  The vector literal is passed as a parameterized
      * bind variable and cast to ::vector inside SQL — NOT string-interpolated.
      *

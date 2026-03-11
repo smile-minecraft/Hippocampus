@@ -4,7 +4,6 @@ import { useParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchAdminExamQuestions, bulkDeleteQuestions, bulkTransferQuestions } from '@/lib/apiClient'
 import { useQuestionSelection } from '@/lib/stores/useQuestionSelection'
-import { TopNav } from '@/components/ui/TopNav'
 import { Loader2, Trash2, ArrowRightLeft, Square, CheckSquare, Pencil, X } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useMemo } from 'react'
@@ -117,7 +116,6 @@ export default function ExamDetailPage() {
 
     return (
         <>
-            <TopNav />
             <main className="min-h-screen bg-bg-base px-4 py-6 transition-colors duration-300">
                 <div className="max-w-6xl mx-auto space-y-6">
                     <header className="flex justify-between items-center space-y-1">

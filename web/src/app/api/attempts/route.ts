@@ -20,6 +20,11 @@
  *  - First attempt (no existing record): upsert creates a new record.
  *  - Concurrent submits: Prisma upsert is atomic at the DB level.
  *  - Deleted question: 404 guard prevents orphaned records.
+ *
+ * Performance:
+ *  - Wilson Score difficulty recalculation runs asynchronously (fire-and-forget)
+ *    outside the main upsert to avoid holding a transaction lock on the Question
+ *    table. The difficulty column is eventually consistent (updates within ms).
  */
 
 import { NextRequest } from "next/server";
@@ -156,63 +161,34 @@ export async function POST(request: NextRequest): Promise<Response> {
         Date.now() + interval * 24 * 60 * 60 * 1000
     );
 
-    // ── Transactional Safety: Upsert Record + Update Global Difficulty ────────
+    // ── Upsert Record (atomic, no longer wrapped with Wilson Score update) ────
     let record;
     try {
-        record = await db.$transaction(async (txBase) => {
-            // Workaround for Prisma 6 + TS Omit dropping getters in IDEs
-            const tx = txBase as unknown as typeof db;
-            // 1. Upsert the UserQuestionRecord
-            const upsertedRecord = existing
-                ? await tx.userQuestionRecord.update({
-                    where: { id: existing.id },
-                    data: { userAnswer: userAnswerStr, isCorrect, easeFactor, interval, repetitions, nextReviewAt, answeredAt: new Date() },
-                    select: { id: true, isCorrect: true, nextReviewAt: true },
-                })
-                : await tx.userQuestionRecord.create({
-                    data: { userId, questionId, userAnswer: userAnswerStr, isCorrect, easeFactor, interval, repetitions, nextReviewAt },
-                    select: { id: true, isCorrect: true, nextReviewAt: true },
-                });
-
-            // 2. Real-time Community Difficulty Recalculation ($executeRaw)
-            //    Updates the static `difficulty` field (1-5 range) based on overall accuracy.
-            await tx.$executeRaw`
-                WITH global_stats AS (
-                    SELECT
-                        COUNT(*) AS total_attempts,
-                        AVG(CAST("isCorrect" AS FLOAT)) AS correct_rate
-                    FROM "UserQuestionRecord"
-                    WHERE "questionId" = ${questionId}::uuid AND "deletedAt" IS NULL
-                ),
-                -- Calculate Wilson lower bound matching quiz/next/route.ts
-                calculated AS (
-                    SELECT
-                        CASE
-                            WHEN total_attempts = 0 THEN 1
-                            ELSE 1.0 - (
-                                (correct_rate + 1.9208 / (2.0 * total_attempts))
-                                / (1.0 + 3.8416 / total_attempts)
-                                - (1.96 / (1.0 + 3.8416 / total_attempts))
-                                * SQRT(
-                                    correct_rate * (1.0 - correct_rate) / total_attempts
-                                    + 3.8416 / (4.0 * total_attempts * total_attempts)
-                                )
-                            )
-                        END AS wilson_score
-                    FROM global_stats
-                )
-                UPDATE "Question"
-                -- Map Wilson score (0.0 - 1.0) back to 1-5 difficulty range
-                SET "difficulty" = LEAST(5, GREATEST(1, ROUND((SELECT wilson_score FROM calculated) * 4 + 1)::INT))
-                WHERE "id" = ${questionId}::uuid
-            `;
-
-            return upsertedRecord;
-        });
+        record = existing
+            ? await db.userQuestionRecord.update({
+                where: { id: existing.id },
+                data: { userAnswer: userAnswerStr, isCorrect, easeFactor, interval, repetitions, nextReviewAt, answeredAt: new Date() },
+                select: { id: true, isCorrect: true, nextReviewAt: true },
+            })
+            : await db.userQuestionRecord.create({
+                data: { userId, questionId, userAnswer: userAnswerStr, isCorrect, easeFactor, interval, repetitions, nextReviewAt },
+                select: { id: true, isCorrect: true, nextReviewAt: true },
+            });
     } catch (err) {
-        log.error('attempts', 'Transaction failed', { error: err instanceof Error ? err.message : String(err) });
+        log.error('attempts', 'Upsert record failed', { error: err instanceof Error ? err.message : String(err) });
         return Res.internal("儲存作答紀錄失敗，請稍後再試");
     }
+
+    // ── Async Community Difficulty Recalculation (fire-and-forget) ─────────
+    // The Wilson Score update is eventually consistent — it doesn't need to
+    // block the response or share a transaction lock with the upsert above.
+    // This reduces lock contention on the Question table under concurrent load.
+    updateWilsonScore(questionId).catch((err) => {
+        log.error('attempts', 'Wilson score update failed', {
+            questionId,
+            error: err instanceof Error ? err.message : String(err),
+        });
+    });
 
 
     return Res.ok({
@@ -221,4 +197,41 @@ export async function POST(request: NextRequest): Promise<Response> {
         nextReviewAt: record.nextReviewAt,
         record,
     });
+}
+
+// ─── Async Wilson Score Update ────────────────────────────────────────────────
+// Extracted from the main transaction to reduce lock contention on Question.
+// This is fire-and-forget: the client gets a response immediately, and the
+// community difficulty column updates within milliseconds asynchronously.
+async function updateWilsonScore(questionId: string): Promise<void> {
+    await db.$executeRaw`
+        WITH global_stats AS (
+            SELECT
+                COUNT(*) AS total_attempts,
+                AVG(CAST("isCorrect" AS FLOAT)) AS correct_rate
+            FROM "UserQuestionRecord"
+            WHERE "questionId" = ${questionId}::uuid AND "deletedAt" IS NULL
+        ),
+        -- Calculate Wilson lower bound matching quiz/next/route.ts
+        calculated AS (
+            SELECT
+                CASE
+                    WHEN total_attempts = 0 THEN 1
+                    ELSE 1.0 - (
+                        (correct_rate + 1.9208 / (2.0 * total_attempts))
+                        / (1.0 + 3.8416 / total_attempts)
+                        - (1.96 / (1.0 + 3.8416 / total_attempts))
+                        * SQRT(
+                            correct_rate * (1.0 - correct_rate) / total_attempts
+                            + 3.8416 / (4.0 * total_attempts * total_attempts)
+                        )
+                    )
+                END AS wilson_score
+            FROM global_stats
+        )
+        UPDATE "Question"
+        -- Map Wilson score (0.0 - 1.0) back to 1-5 difficulty range
+        SET "difficulty" = LEAST(5, GREATEST(1, ROUND((SELECT wilson_score FROM calculated) * 4 + 1)::INT))
+        WHERE "id" = ${questionId}::uuid
+    `;
 }

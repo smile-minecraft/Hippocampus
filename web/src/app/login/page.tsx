@@ -1,10 +1,15 @@
 "use client"
 import React, { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Lock, Mail, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
-    const [email, setEmail] = useState('admin@hippocampus.app');
-    const [password, setPassword] = useState('admin123');
+    const searchParams = useSearchParams();
+    const redirect = searchParams.get('redirect') || '/';
+
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +31,9 @@ export default function LoginPage() {
             if (!res.ok || (data && !data.ok)) {
                 throw new Error((data.message as string) || (data.error as string) || '登入失敗，請檢查帳號密碼');
             }
-            window.location.href = '/audit';
+
+            // Redirect to the original page or default
+            window.location.href = redirect;
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : '登入失敗');
         } finally {
@@ -64,6 +71,7 @@ export default function LoginPage() {
                                 onChange={e => setEmail(e.target.value)}
                                 placeholder="name@example.com"
                                 required
+                                autoComplete="email"
                             />
                         </div>
                     </div>
@@ -79,6 +87,7 @@ export default function LoginPage() {
                                 onChange={e => setPassword(e.target.value)}
                                 placeholder="••••••••"
                                 required
+                                autoComplete="current-password"
                             />
                         </div>
                     </div>
@@ -91,8 +100,11 @@ export default function LoginPage() {
                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : '安全登入'}
                     </button>
 
-                    <p className="text-xs text-slate-500 text-center mt-4">
-                        預設管理員: <code className="bg-slate-900 px-1 py-0.5 rounded text-teal-400">admin@hippocampus.app</code>
+                    <p className="text-sm text-slate-400 text-center mt-4">
+                        沒有帳號？{' '}
+                        <Link href="/register" className="text-teal-400 hover:underline font-medium">
+                            建立帳號
+                        </Link>
                     </p>
                 </form>
             </div>

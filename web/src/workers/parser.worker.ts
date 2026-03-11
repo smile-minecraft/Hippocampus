@@ -7,20 +7,19 @@
  *   2. Route to Word or PDF branch:
  *      Word: mammoth → HTML → Markdown, images stream → MinIO assets bucket
  *      PDF : child_process.spawn(pdftoppm) → PNG files in /tmp → MinIO assets bucket
- *   3. Build page image list → Gemini extraction → Zod validation
+ *   3. Build page image list → AI extraction (OpenAI / Gemini) → Zod validation
  *   4. Write ParsedDraft record (AWAITING_REVIEW) to PostgreSQL
  *   5. Cleanup /tmp/parser-{jobId}/ in finally block (always)
  *
- *
  * Resilience:
  *   - PDF subprocess timeout: 60 s hard limit + SIGKILL fallback
- *   - BullMQ lockDuration: 300 s to cover worst-case large PDF
+ *   - BullMQ lockDuration: 660 s to cover cockatiel's 600 s timeout + retry delays
  *   - All uploads streaming (zero-copy) via MinIO SDK
  *   - ParsedDraft.errorLog captures failure details for admin review
  */
 
-import { Worker, type Job } from "bullmq";
-import { log } from "../lib/logger";
+import { Worker, type Job, Queue } from "bullmq";
+import { log, setLogSink } from "../lib/logger";
 import { exec, spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
@@ -39,8 +38,23 @@ import {
     uploadStream,
     BUCKETS,
 } from "../lib/minio/client";
-import { extractQuestionsFromImages } from "../lib/ai/gemini";
+import {
+    extractQuestionsFromImages,
+    waitForServiceHealth,
+    type ExtractionResponse,
+    type LLMMeta,
+    type ImageDataPart,
+} from "../lib/ai";
 import type { ChildProcess } from "node:child_process";
+
+// TUI store — ink components consume this reactively
+import {
+    upsertJob,
+    removeJob,
+    setQueueCounts,
+    appendLog,
+    setWorkerMeta,
+} from "./tui/store.js";
 
 const _execAsync = promisify(exec);
 
@@ -51,27 +65,21 @@ const activeSubprocesses = new Set<ChildProcess>();
 // Concurrency & lock configuration
 // ---------------------------------------------------------------------------
 const WORKER_CONCURRENCY = 3;
-const LOCK_DURATION_MS = 300_000; // 300 s — must exceed worst-case Gemini timeout (600s) + retry delays
+const LOCK_DURATION_MS = 660_000; // 660 s — must exceed cockatiel's 600 s timeout + retry delays
 
 // ---------------------------------------------------------------------------
-// Terminal progress bar renderer
+// AI batch configuration — split images into smaller groups to avoid
+// overwhelming the AI service with huge payloads.
 // ---------------------------------------------------------------------------
-const BAR_WIDTH = 30;
-const COLORS = {
-    reset: "\x1b[0m",
-    green: "\x1b[32m",
-    cyan: "\x1b[36m",
-    dim: "\x1b[2m",
-    bold: "\x1b[1m",
-    yellow: "\x1b[33m",
-    red: "\x1b[31m",
-    bgGreen: "\x1b[42m",
-    bgWhite: "\x1b[47m",
-};
+const AI_BATCH_SIZE = Number(process.env.AI_BATCH_SIZE) || 3;
+
+// ---------------------------------------------------------------------------
+// Progress reporter — writes to BullMQ (for frontend) AND TUI store (for operator)
+// ---------------------------------------------------------------------------
 
 /**
- * Single source of truth for progress — writes to BOTH terminal and BullMQ.
- * Frontend polls BullMQ; operator reads terminal. Data is always identical.
+ * Single source of truth for progress — writes to BOTH BullMQ and the TUI store.
+ * Frontend polls BullMQ; operator reads the ink TUI. Data is always identical.
  */
 async function reportProgress(
     job: Job<ParseDocumentJobData>,
@@ -81,24 +89,8 @@ async function reportProgress(
     // 1. Write to BullMQ (frontend reads this via status API)
     await job.updateProgress({ percent, message });
 
-    // 2. Render visual progress bar in terminal
-    const filled = Math.round((percent / 100) * BAR_WIDTH);
-    const empty = BAR_WIDTH - filled;
-    const bar = `${COLORS.bgGreen}${" ".repeat(filled)}${COLORS.reset}${COLORS.dim}${"░".repeat(empty)}${COLORS.reset}`;
-    const pctStr = `${String(percent).padStart(3)}%`;
-    const jobShort = job.id?.slice(0, 8) ?? "????????";
-    const timestamp = new Date().toLocaleTimeString("zh-TW", { hour12: false });
-
-    // Use single-line overwrite for active jobs (carriage return)
-    const line = `${COLORS.dim}${timestamp}${COLORS.reset} ${COLORS.cyan}[${jobShort}]${COLORS.reset} ${bar} ${COLORS.bold}${pctStr}${COLORS.reset} ${message}`;
-
-    if (percent >= 100) {
-        // Final state — print on a new line so it persists in scroll-back
-        process.stdout.write(`\n${line}\n`);
-    } else {
-        // Overwrite the current line for a cleaner look
-        process.stdout.write(`\r\x1b[K${line}`);
-    }
+    // 2. Update TUI store (ink renders the progress bar)
+    upsertJob(job.id!, { percent, message });
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +99,13 @@ async function reportProgress(
 async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
     const { traceId, docType, s3Key, originalFilename } = job.data;
     const tmpDir = path.join(tmpdir(), `parser-${traceId}`);
+
+    // Register this job in the TUI store so the progress table shows it
+    upsertJob(job.id!, {
+        filename: originalFilename ?? s3Key,
+        percent: 0,
+        message: "Starting...",
+    });
 
     log.info('parser-worker', `Job started: ${traceId}`, { jobId: job.id, file: originalFilename ?? s3Key, docType });
 
@@ -137,15 +136,103 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
 
         await reportProgress(job, 60, `圖片轉換完成 (${imageDataParts.length} 張)，正在送入 AI 模型`);
 
-        // --- Gemini extraction with progress callback ---
-        const { data: extraction, meta: geminiMeta } = await extractQuestionsFromImages(
-            imageDataParts,
+        // --- Split images into batches to avoid overwhelming the AI service ---
+        const batches: ImageDataPart[][] = [];
+        for (let i = 0; i < imageDataParts.length; i += AI_BATCH_SIZE) {
+            batches.push(imageDataParts.slice(i, i + AI_BATCH_SIZE));
+        }
+        const totalBatches = batches.length;
+
+        log.info('parser-worker', `Splitting ${imageDataParts.length} images into ${totalBatches} batches of ≤${AI_BATCH_SIZE}`, {
             traceId,
-            (msg) => {
-                // Fire-and-forget progress update during AI processing
-                reportProgress(job, 70, msg).catch(() => { /* non-critical progress update */ });
+            totalImages: imageDataParts.length,
+            batchSize: AI_BATCH_SIZE,
+            totalBatches,
+        });
+
+        // --- Process each batch sequentially ---
+        const batchResults: { data: ExtractionResponse; meta: LLMMeta }[] = [];
+
+        for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+            const batch = batches[batchIdx];
+            const batchLabel = `批次 ${batchIdx + 1}/${totalBatches}`;
+
+            // Health check before each batch (including the first)
+            await reportProgress(job, 65, `${batchLabel}：正在等待 AI 服務就緒...`);
+            const waitResult = await waitForServiceHealth({
+                maxWaitMs: 180_000,
+                pollIntervalMs: 5_000,
+                onAttempt: (attempt, health) => {
+                    const msg = health.healthy
+                        ? `AI 服務已就緒 (嘗試 ${attempt} 次)`
+                        : `${batchLabel}：等待 AI 服務... (嘗試 ${attempt} 次)`;
+                    log.info('parser-worker', msg, {
+                        traceId,
+                        attempt,
+                        batchIndex: batchIdx,
+                        latencyMs: health.latencyMs,
+                    });
+                },
+            });
+
+            if (!waitResult.ready) {
+                throw new Error(
+                    `AI 服務在 ${waitResult.attempts} 次嘗試後仍未就緒: ${waitResult.finalHealth.error}`
+                );
             }
-        );
+
+            // Progress: scale 65–85 across all batches
+            const batchProgressBase = 65 + Math.round((batchIdx / totalBatches) * 20);
+            await reportProgress(
+                job,
+                batchProgressBase,
+                `${batchLabel}：AI 服務就緒 (延遲 ${waitResult.finalHealth.latencyMs}ms)，正在萃取題目 (${batch.length} 張圖片)...`
+            );
+
+            // AI extraction for this batch
+            const batchResult = await extractQuestionsFromImages(
+                batch,
+                `${traceId}__batch${batchIdx + 1}`,
+                (msg) => {
+                    reportProgress(job, batchProgressBase, `${batchLabel}：${msg}`).catch(() => {});
+                }
+            );
+
+            batchResults.push(batchResult);
+
+            log.info('parser-worker', `${batchLabel} completed: ${batchResult.data.questions.length} questions extracted`, {
+                traceId,
+                batchIndex: batchIdx,
+                questionsInBatch: batchResult.data.questions.length,
+                elapsedMs: batchResult.meta.elapsedMs,
+            });
+        }
+
+        // --- Merge batch results ---
+        const mergedQuestions = batchResults.flatMap((r) => r.data.questions);
+        const extraction: ExtractionResponse = {
+            questions: mergedQuestions,
+            metadata: {
+                year: batchResults[0]?.data.metadata.year,
+                examType: batchResults[0]?.data.metadata.examType,
+                pageCount: imageDataParts.length,
+            },
+        };
+
+        const llmMeta: LLMMeta = {
+            provider: batchResults[0]?.meta.provider ?? "openai",
+            model: batchResults[0]?.meta.model ?? "unknown",
+            imageCount: imageDataParts.length,
+            totalPayloadMB: batchResults.reduce((sum, r) => sum + Number(r.meta.totalPayloadMB), 0).toFixed(2),
+            totalAttempts: batchResults.reduce((sum, r) => sum + r.meta.totalAttempts, 0),
+            elapsedMs: batchResults.reduce((sum, r) => sum + r.meta.elapsedMs, 0),
+            responseLength: batchResults.reduce((sum, r) => sum + r.meta.responseLength, 0),
+            finishReason: batchResults.map((r) => r.meta.finishReason).join(","),
+            promptTokenCount: batchResults.reduce((sum, r) => sum + r.meta.promptTokenCount, 0),
+            candidatesTokenCount: batchResults.reduce((sum, r) => sum + r.meta.candidatesTokenCount, 0),
+            questionCount: mergedQuestions.length,
+            timestamp: new Date().toISOString(),
+        };
 
         await reportProgress(job, 90, `AI 萃取完成：${extraction.questions.length} 道題目，正在寫入資料庫`);
 
@@ -155,14 +242,14 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
             update: {
                 draftJson: extraction as object,
                 status: "AWAITING_REVIEW",
-                geminiMeta: geminiMeta as object,
+                geminiMeta: llmMeta as object,
             },
             create: {
                 jobId: job.id!,
                 originalUrl: s3Key,
                 draftJson: extraction as object,
                 status: "AWAITING_REVIEW",
-                geminiMeta: geminiMeta as object,
+                geminiMeta: llmMeta as object,
             },
         });
 
@@ -171,11 +258,8 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
         const message = err instanceof Error ? err.message : String(err);
         const stack = err instanceof Error ? err.stack : undefined;
 
-        // Terminal failure output
-        process.stdout.write(`\r\x1b[K${COLORS.red}❌ [${job.id?.slice(0, 8)}] FAILED: ${message}${COLORS.reset}\n`);
-
-        // Structured failure log
-        log.error('parser-worker', message, {
+        // Log failure — TUI will display this via the log panel
+        log.error('parser-worker', `Job failed: ${message}`, {
             traceId,
             jobId: job.id,
             stack,
@@ -199,6 +283,9 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
 
         throw err; // Re-throw so BullMQ can apply retry / failure logic
     } finally {
+        // Remove job from TUI active jobs table
+        removeJob(job.id!);
+
         // Always clean up tmp directory to prevent disk exhaustion
         await rm(tmpDir, { recursive: true, force: true }).catch((e) =>
             log.warn('parser-worker', `Failed to clean tmp dir ${tmpDir}`, { error: e.message })
@@ -220,7 +307,7 @@ async function processWordDocument(
     const tmpWordPath = path.join(tmpDir, "input.docx");
 
     await streamPipeline(rawStream, createWriteStream(tmpWordPath));
-    await job.updateProgress(20);
+    await reportProgress(job, 20, 'Word 檔案下載完成，正在解析圖片...');
 
     const imageParts: Array<{ type: "base64"; mimeType: string; data: string }> = [];
     let imageIndex = 0;
@@ -256,11 +343,8 @@ async function processWordDocument(
         }
     );
 
-    await job.updateProgress(40);
+    await reportProgress(job, 40, `Word 圖片擷取完成 (${imageParts.length} 張)`);
 
-    // Store the HTML as a page "image" representation via Gemini text input
-    // (For Word docs we pass page screenshots or rely on Gemini's text mode)
-    // Simplified: return extracted image URLs for downstream Gemini call
     return imageParts;
 }
 
@@ -298,7 +382,7 @@ async function processPdfDocument(
     }
 
     // Upload each PNG to MinIO assets bucket (fPutObject — streams internally)
-    const { readFileSync } = await import('node:fs');
+    const { readFile } = await import('node:fs/promises');
     const imageParts: Array<{ type: "base64"; mimeType: string; data: string }> = [];
 
     for (const pngFile of pngFiles) {
@@ -312,7 +396,7 @@ async function processPdfDocument(
             "image/png"
         );
 
-        const buffer = readFileSync(localPath);
+        const buffer = await readFile(localPath);
         imageParts.push({
             type: "base64",
             mimeType: "image/png",
@@ -325,26 +409,61 @@ async function processPdfDocument(
 }
 
 // ---------------------------------------------------------------------------
-// PDF rasterization with strict resource limits (OOM / zombie prevention)
+// PDF rasterization with parallel multi-process execution
 // ---------------------------------------------------------------------------
-async function rasterizePdf(
+
+const execAsync = promisify(exec);
+
+/** Configurable render DPI via env var (default 300) */
+const PDF_RENDER_DPI = parseInt(process.env.PDF_RENDER_DPI || '300', 10);
+
+/** Number of parallel pdftoppm processes (default: 4, capped at 8) */
+const PDF_PARALLEL_WORKERS = Math.min(
+    parseInt(process.env.PDF_PARALLEL_WORKERS || '4', 10),
+    8
+);
+
+/**
+ * Get the page count of a PDF using pdfinfo (part of Poppler).
+ */
+async function getPdfPageCount(inputPath: string): Promise<number> {
+    try {
+        const { stdout } = await execAsync(`pdfinfo "${inputPath}"`, { timeout: 30_000 });
+        const match = stdout.match(/Pages:\s+(\d+)/);
+        if (!match) throw new Error('Could not parse page count from pdfinfo');
+        return parseInt(match[1], 10);
+    } catch (err) {
+        log.warn('parser-worker', 'pdfinfo failed, falling back to single-process mode', {
+            error: err instanceof Error ? err.message : String(err),
+        });
+        return -1; // Sentinel: unknown page count → fallback to single process
+    }
+}
+
+/**
+ * Spawn a single pdftoppm child for a page range [firstPage, lastPage].
+ */
+function rasterizePageRange(
     inputPath: string,
     outputPrefix: string,
+    firstPage: number,
+    lastPage: number,
     traceId: string
 ): Promise<void> {
     return new Promise((resolve, reject) => {
-        // pdftoppm is part of Poppler and produces {outputPrefix}-NNNN.png
         const child = spawn(
             "pdftoppm",
             [
-                "-png",       // Output format
-                "-r", "300",  // 300 DPI
+                "-png",
+                "-r", String(PDF_RENDER_DPI),
+                "-f", String(firstPage),
+                "-l", String(lastPage),
                 inputPath,
                 outputPrefix,
             ],
             {
-                timeout: 300_000,           // 300 s (5 mins) wall-clock timeout for large PDFs
-                killSignal: "SIGKILL",      // Ensure zombie cannot linger after SIGTERM
+                timeout: 300_000,
+                killSignal: "SIGKILL",
             }
         );
 
@@ -353,7 +472,6 @@ async function rasterizePdf(
         let stderrBuffer = "";
         child.stderr?.on("data", (chunk: Buffer) => {
             stderrBuffer += chunk.toString();
-            // Prevent stderrBuffer from growing unboundedly (defensive)
             if (stderrBuffer.length > 50_000) {
                 stderrBuffer = stderrBuffer.slice(-50_000);
             }
@@ -364,13 +482,13 @@ async function rasterizePdf(
             if (signal) {
                 reject(
                     new Error(
-                        `pdftoppm killed by signal ${signal} (likely timeout) [traceId=${traceId}]`
+                        `pdftoppm killed by signal ${signal} (pages ${firstPage}-${lastPage}) [traceId=${traceId}]`
                     )
                 );
             } else if (code !== 0) {
                 reject(
                     new Error(
-                        `pdftoppm exited with code ${code} [traceId=${traceId}]\nstderr: ${stderrBuffer.slice(0, 500)}`
+                        `pdftoppm exited with code ${code} (pages ${firstPage}-${lastPage}) [traceId=${traceId}]\nstderr: ${stderrBuffer.slice(0, 500)}`
                     )
                 );
             } else {
@@ -382,16 +500,74 @@ async function rasterizePdf(
             activeSubprocesses.delete(child);
             reject(
                 new Error(
-                    `Failed to spawn pdftoppm [traceId=${traceId}]: ${err.message}`
+                    `Failed to spawn pdftoppm (pages ${firstPage}-${lastPage}) [traceId=${traceId}]: ${err.message}`
                 )
             );
         });
     });
 }
 
+/**
+ * Rasterize a PDF to PNGs using parallel pdftoppm processes.
+ *
+ * Strategy:
+ *  1. Use `pdfinfo` to get page count
+ *  2. Split pages into N chunks (N = CPU count, capped at 8)
+ *  3. Spawn N parallel pdftoppm processes with -f/-l flags
+ *  4. Promise.all to await all processes
+ *
+ * Falls back to single-process mode if pdfinfo fails or for small PDFs.
+ */
+async function rasterizePdf(
+    inputPath: string,
+    outputPrefix: string,
+    traceId: string
+): Promise<void> {
+    const pageCount = await getPdfPageCount(inputPath);
+
+    // For small PDFs or if pdfinfo failed, use single process
+    const numWorkers = Math.min(
+        pageCount <= 0 ? 1 : Math.max(1, Math.min(pageCount, PDF_PARALLEL_WORKERS)),
+        8
+    );
+
+    if (numWorkers <= 1 || pageCount <= 0) {
+        // Single-process fallback (original behavior)
+        return rasterizePageRange(inputPath, outputPrefix, 1, pageCount > 0 ? pageCount : 999999, traceId);
+    }
+
+    log.info('parser-worker', `Parallel PDF rasterization: ${pageCount} pages across ${numWorkers} processes at ${PDF_RENDER_DPI} DPI`, {
+        traceId,
+        pageCount,
+        workers: numWorkers,
+        dpi: PDF_RENDER_DPI,
+    });
+
+    // Split pages into roughly equal chunks
+    const pagesPerWorker = Math.ceil(pageCount / numWorkers);
+    const tasks: Promise<void>[] = [];
+
+    for (let i = 0; i < numWorkers; i++) {
+        const firstPage = i * pagesPerWorker + 1;
+        const lastPage = Math.min((i + 1) * pagesPerWorker, pageCount);
+        if (firstPage > pageCount) break;
+
+        tasks.push(rasterizePageRange(inputPath, outputPrefix, firstPage, lastPage, traceId));
+    }
+
+    await Promise.all(tasks);
+}
+
 // ---------------------------------------------------------------------------
-// Worker bootstrap
+// Worker bootstrap + TUI initialisation
 // ---------------------------------------------------------------------------
+
+// 1. Wire logger → TUI store (must happen before any log.* calls below)
+setLogSink(({ level, service, message, timestamp, meta }) => {
+    appendLog({ level, service, message, timestamp, meta });
+});
+
+// 2. Create the BullMQ worker
 const worker = new Worker<ParseDocumentJobData>(
     QUEUE_NAMES.PARSER,
     processParseJob,
@@ -403,7 +579,13 @@ const worker = new Worker<ParseDocumentJobData>(
     }
 );
 
+// 3. Populate TUI metadata
+const provider = process.env.LLM_PROVIDER ?? "openai";
+setWorkerMeta({ concurrency: WORKER_CONCURRENCY, provider });
+
+// 4. Worker lifecycle events → TUI store + logger
 worker.on("completed", (job) => {
+    removeJob(job.id!);
     log.info('parser-worker', 'Job completed', {
         event: "job_completed",
         jobId: job.id,
@@ -412,6 +594,7 @@ worker.on("completed", (job) => {
 });
 
 worker.on("failed", (job, err) => {
+    if (job?.id) removeJob(job.id);
     log.error('parser-worker', 'Job failed', {
         event: "job_failed",
         jobId: job?.id,
@@ -427,6 +610,42 @@ worker.on("stalled", (jobId) => {
     });
 });
 
+// 5. Poll queue counts every 5 s for the TUI stats panel
+const parserQueue = new Queue(QUEUE_NAMES.PARSER, { connection: redisConnection });
+const QUEUE_POLL_INTERVAL_MS = 5_000;
+
+async function pollQueueCounts(): Promise<void> {
+    try {
+        const counts = await parserQueue.getJobCounts(
+            "waiting", "active", "completed", "failed", "delayed"
+        );
+        setQueueCounts({
+            waiting: counts.waiting ?? 0,
+            active: counts.active ?? 0,
+            completed: counts.completed ?? 0,
+            failed: counts.failed ?? 0,
+            delayed: counts.delayed ?? 0,
+        });
+    } catch {
+        // Silently ignore — Redis may be momentarily unreachable
+    }
+}
+
+const queuePollTimer = setInterval(pollQueueCounts, QUEUE_POLL_INTERVAL_MS);
+// Fire immediately so the TUI has data on first render
+void pollQueueCounts();
+
+// 6. Start ink TUI render
+async function startTui(): Promise<void> {
+    const React = await import("react");
+    const { render } = await import("ink");
+    const { default: App } = await import("./tui/App.js");
+
+    render(React.createElement(App));
+}
+
+void startTui();
+
 // ---------------------------------------------------------------------------
 // Graceful shutdown
 // ---------------------------------------------------------------------------
@@ -437,12 +656,15 @@ async function gracefulShutdown(signal: NodeJS.Signals) {
     isShuttingDown = true;
     log.info('parser-worker', `[${signal}] Initiating graceful shutdown... pausing worker.`);
 
-    // 1. Pause worker to stop picking up new jobs
+    // 1. Stop queue polling
+    clearInterval(queuePollTimer);
+
+    // 2. Pause worker to stop picking up new jobs
     await worker.pause(true);
 
     const GRACEFUL_TIMEOUT_MS = 30_000;
 
-    // 2. Start a hard kill timer
+    // 3. Start a hard kill timer
     const timeoutTimer = setTimeout(async () => {
         log.warn('parser-worker', `[${signal}] Timeout ${GRACEFUL_TIMEOUT_MS}ms reached. Forcing SIGKILL on subprocesses.`);
         for (const child of activeSubprocesses) {
@@ -457,10 +679,13 @@ async function gracefulShutdown(signal: NodeJS.Signals) {
     }, GRACEFUL_TIMEOUT_MS);
 
     try {
-        // 3. Wait for currently executing jobs to finish natively
+        // 4. Wait for currently executing jobs to finish natively
         await worker.close();
 
-        // 4. Safely disconnect Prisma
+        // 5. Close the queue polling connection
+        await parserQueue.close();
+
+        // 6. Safely disconnect Prisma
         await db.$disconnect();
 
         clearTimeout(timeoutTimer);
