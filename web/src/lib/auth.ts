@@ -3,8 +3,9 @@
  *
  * Design Decisions:
  *  1. Uses `jose` (not `jsonwebtoken`) for Edge Runtime compatibility in middleware.ts.
- *  2. Double-Token architecture: short-lived access_token (15m) + long-lived
- *     refresh_token (7d), both stored in HttpOnly Secure cookies.
+ *  2. Double-Token architecture: short-lived access_token (4h, configurable via
+ *     ACCESS_TOKEN_TTL_SECONDS env) + long-lived refresh_token (30d, configurable
+ *     via REFRESH_TOKEN_TTL_SECONDS env), both stored in HttpOnly Secure cookies.
  *  3. CSRF: Double-Submit Cookie pattern — a readable __csrf_token cookie is
  *     compared against the X-CSRF-Token request header.
  *  4. Refresh Race Condition Guard: When access_token expires and multiple
@@ -32,8 +33,22 @@ import { redis } from "./redis";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;         // 15 minutes
-const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+/** Parse an env var as an integer, falling back to `fallback` if unset / NaN. */
+function envInt(key: string, fallback: number): number {
+    const raw = process.env[key];
+    if (raw === undefined || raw === "") return fallback;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+const ACCESS_TOKEN_TTL_SECONDS = envInt(
+    "ACCESS_TOKEN_TTL_SECONDS",
+    4 * 60 * 60            // default: 4 hours
+);
+const REFRESH_TOKEN_TTL_SECONDS = envInt(
+    "REFRESH_TOKEN_TTL_SECONDS",
+    30 * 24 * 60 * 60      // default: 30 days
+);
 const REFRESH_GRACE_PERIOD_SECONDS = 30;           // Race condition tolerance
 const REFRESH_LOCK_TTL_MS = 5_000;                 // Distributed lock expiry
 

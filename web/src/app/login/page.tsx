@@ -43,14 +43,14 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen bg-bg-base flex justify-center items-center p-4">
-            <div className="max-w-md w-full bg-slate-800/80 p-8 rounded-2xl border border-slate-700 shadow-2xl relative overflow-hidden">
+            <div className="max-w-md w-full bg-bg-surface p-8 rounded-2xl border border-border-base shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-teal-400 to-cyan-500"></div>
 
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-cyan-500 mb-2">
                         Hippocampus
                     </h1>
-                    <p className="text-slate-400 text-sm">系統身分驗證中心</p>
+                    <p className="text-text-muted text-sm">系統身分驗證中心</p>
                 </div>
 
                 {error && (
@@ -61,12 +61,12 @@ export default function LoginPage() {
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-slate-300 ml-1">電子郵件</label>
+                        <label className="text-sm font-medium text-text-muted ml-1">電子郵件</label>
                         <div className="relative">
-                            <Mail className="absolute left-3 top-2.5 h-5 w-5 text-slate-500" />
+                            <Mail className="absolute left-3 top-2.5 h-5 w-5 text-text-muted" />
                             <input
                                 type="email"
-                                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                                className="w-full bg-bg-base border border-border-base rounded-xl pl-10 pr-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
                                 placeholder="name@example.com"
@@ -77,12 +77,12 @@ export default function LoginPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-slate-300 ml-1">密碼</label>
+                        <label className="text-sm font-medium text-text-muted ml-1">密碼</label>
                         <div className="relative">
-                            <Lock className="absolute left-3 top-2.5 h-5 w-5 text-slate-500" />
+                            <Lock className="absolute left-3 top-2.5 h-5 w-5 text-text-muted" />
                             <input
                                 type="password"
-                                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                                className="w-full bg-bg-base border border-border-base rounded-xl pl-10 pr-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
                                 placeholder="••••••••"
@@ -100,7 +100,7 @@ export default function LoginPage() {
                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : '安全登入'}
                     </button>
 
-                    <p className="text-sm text-slate-400 text-center mt-4">
+                    <p className="text-sm text-text-muted text-center mt-4">
                         沒有帳號？{' '}
                         <Link href="/register" className="text-teal-400 hover:underline font-medium">
                             建立帳號

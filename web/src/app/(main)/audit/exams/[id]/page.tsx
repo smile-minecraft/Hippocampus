@@ -4,11 +4,17 @@ import { useParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchAdminExamQuestions, bulkDeleteQuestions, bulkTransferQuestions } from '@/lib/apiClient'
 import { useQuestionSelection } from '@/lib/stores/useQuestionSelection'
-import { Loader2, Trash2, ArrowRightLeft, Square, CheckSquare, Pencil, X } from 'lucide-react'
+import { Loader2, Trash2, ArrowRightLeft, Square, CheckSquare, Pencil, X, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useMemo } from 'react'
 import { updateAdminQuestion, deleteAdminQuestion, type Question } from '@/lib/apiClient'
 import { LatexText } from '@/components/ui/LatexText'
+
+function getCsrfToken(): string {
+    if (typeof document === 'undefined') return ''
+    const match = document.cookie.match(/(?:^|;\s*)__csrf_token=([^;]+)/)
+    return match ? match[1] : ''
+}
 
 export default function ExamDetailPage() {
     const params = useParams()
@@ -296,10 +302,38 @@ function EditQuestionModal({ question, onClose, onSave, isSaving }: { question: 
     const [explanation, setExplanation] = useState(question.explanation || '')
     const [options, setOptions] = useState(question.options as Record<string, string>)
     const [answer, setAnswer] = useState(question.answer)
+    const [generatingExplanation, setGeneratingExplanation] = useState(false)
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
         onSave({ stem, explanation, options, answer })
+    }
+
+    const generateExplanation = async () => {
+        setGeneratingExplanation(true)
+        try {
+            const res = await fetch('/api/llm/generate-explanations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': getCsrfToken(),
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    questions: [{ stem, options, answer }],
+                }),
+            })
+            const data = await res.json()
+            if (data.ok && Array.isArray(data.data?.explanations) && data.data.explanations[0]) {
+                setExplanation(data.data.explanations[0])
+            } else {
+                alert(`生成詳解失敗: ${data.message || '未知錯誤'}`)
+            }
+        } catch {
+            alert('生成詳解失敗')
+        } finally {
+            setGeneratingExplanation(false)
+        }
     }
 
     return (
@@ -349,7 +383,18 @@ function EditQuestionModal({ question, onClose, onSave, isSaving }: { question: 
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium text-text-base">詳解 (Explanation)</label>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-text-base">詳解 (Explanation)</label>
+                            <button
+                                type="button"
+                                onClick={generateExplanation}
+                                disabled={generatingExplanation}
+                                className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg text-violet-500 hover:bg-violet-500/10 border border-violet-500/30 transition-colors disabled:opacity-50"
+                            >
+                                {generatingExplanation ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                                AI 生成詳解
+                            </button>
+                        </div>
                         <textarea
                             value={explanation}
                             onChange={(e) => setExplanation(e.target.value)}

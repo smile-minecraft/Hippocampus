@@ -58,7 +58,7 @@ export async function POST(
                         answer: q.answer || "A",
                         explanation: q.explanation || null,
                         imageUrls: q.imagePlaceholders || [], // Treat placeholders as image URLs for now (or store appropriately)
-                        difficulty: 1, // Default rating
+                        difficulty: q.difficulty ?? 1, // Use AI-estimated difficulty, fallback to 1
                     },
                 });
 

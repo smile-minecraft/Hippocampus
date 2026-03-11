@@ -33,7 +33,7 @@ const ROLE_CONFIG = {
     USER: {
         label: "一般用戶",
         icon: Shield,
-        badgeClass: "bg-slate-500/15 text-slate-400",
+        badgeClass: "bg-primary-base/15 text-text-muted",
     },
 } as const;
 
@@ -71,14 +71,14 @@ export default function UsersManagerPage() {
 
     return (
         <main className="min-h-screen bg-bg-base pb-12 transition-colors duration-300">
-            <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto text-slate-100">
+            <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto text-text-base">
                 {/* Header */}
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-purple-500">
                             用戶管理中心
                         </h1>
-                        <p className="text-slate-400 mt-1">
+                        <p className="text-text-muted mt-1">
                             管理系統用戶帳號與角色權限
                         </p>
                     </div>
@@ -87,11 +87,11 @@ export default function UsersManagerPage() {
                 {/* Search */}
                 <div className="flex gap-4 mb-6">
                     <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-text-muted" />
                         <input
                             type="text"
                             placeholder="搜尋 Email 或姓名..."
-                            className="w-full pl-10 pr-4 py-2 bg-slate-800 border-slate-700 rounded-lg text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none"
+                            className="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none"
                             value={search}
                             onChange={(e) => {
                                 setSearch(e.target.value);
@@ -104,11 +104,11 @@ export default function UsersManagerPage() {
                 {/* Stats */}
                 {pagination && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
-                            <div className="text-2xl font-bold text-slate-100">
+                        <div className="bg-bg-surface/50 border border-border-base rounded-xl p-4">
+                            <div className="text-2xl font-bold text-text-base">
                                 {pagination.total}
                             </div>
-                            <div className="text-xs text-slate-400 mt-1">
+                            <div className="text-xs text-text-muted mt-1">
                                 用戶總數
                             </div>
                         </div>
@@ -118,12 +118,12 @@ export default function UsersManagerPage() {
                                 return (
                                     <div
                                         key={role}
-                                        className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4"
+                                        className="bg-bg-surface/50 border border-border-base rounded-xl p-4"
                                     >
-                                        <div className="text-2xl font-bold text-slate-100">
+                                        <div className="text-2xl font-bold text-text-base">
                                             {roleCounts[role] || 0}
                                         </div>
-                                        <div className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                                        <div className="text-xs text-text-muted mt-1 flex items-center gap-1">
                                             <config.icon className="h-3 w-3" />
                                             {config.label} (本頁)
                                         </div>
@@ -135,9 +135,9 @@ export default function UsersManagerPage() {
                 )}
 
                 {/* Table */}
-                <div className="bg-slate-800/50 rounded-xl overflow-hidden border border-slate-700">
+                <div className="bg-bg-surface/50 rounded-xl overflow-hidden border border-border-base">
                     <table className="w-full text-left text-sm whitespace-nowrap">
-                        <thead className="bg-slate-800/80 text-slate-400 border-b border-slate-700">
+                        <thead className="bg-bg-surface/80 text-text-muted border-b border-border-base">
                             <tr>
                                 <th className="px-6 py-4 font-medium">
                                     用戶
@@ -156,12 +156,12 @@ export default function UsersManagerPage() {
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-700/50">
+                        <tbody className="divide-y divide-border-base">
                             {isLoading ? (
                                 <tr>
                                     <td
                                         colSpan={5}
-                                        className="px-6 py-12 text-center text-slate-400"
+                                        className="px-6 py-12 text-center text-text-muted"
                                     >
                                         <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
                                         載入中...
@@ -183,7 +183,7 @@ export default function UsersManagerPage() {
                                 <tr>
                                     <td
                                         colSpan={5}
-                                        className="px-6 py-12 text-center text-slate-400"
+                                        className="px-6 py-12 text-center text-text-muted"
                                     >
                                         <Users className="h-6 w-6 mx-auto mb-2 opacity-60" />
                                         沒有找到符合條件的用戶
@@ -196,18 +196,18 @@ export default function UsersManagerPage() {
                                     return (
                                         <tr
                                             key={user.id}
-                                            className="hover:bg-slate-800 transition-colors"
+                                            className="hover:bg-bg-surface transition-colors"
                                         >
                                             <td className="px-6 py-3">
                                                 <div>
-                                                    <div className="font-medium text-slate-200">
+                                                    <div className="font-medium text-text-base">
                                                         {user.name || (
-                                                            <span className="text-slate-500 italic">
+                                                            <span className="text-text-muted italic">
                                                                 未設定
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div className="text-xs text-slate-500">
+                                                    <div className="text-xs text-text-muted">
                                                         {user.email}
                                                     </div>
                                                 </div>
@@ -220,10 +220,10 @@ export default function UsersManagerPage() {
                                                     {config.label}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-3 text-right text-slate-300">
+                                            <td className="px-6 py-3 text-right text-text-muted">
                                                 {user._count.questionRecords}
                                             </td>
-                                            <td className="px-6 py-3 text-slate-400 text-xs">
+                                            <td className="px-6 py-3 text-text-muted text-xs">
                                                 {new Date(
                                                     user.createdAt
                                                 ).toLocaleDateString("zh-TW", {
@@ -237,7 +237,7 @@ export default function UsersManagerPage() {
                                                     onClick={() =>
                                                         setEditingUser(user)
                                                     }
-                                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg transition"
+                                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text-base hover:bg-bg-base rounded-lg transition"
                                                 >
                                                     變更角色
                                                     <ChevronDown className="h-3 w-3" />
@@ -257,17 +257,17 @@ export default function UsersManagerPage() {
                         <button
                             disabled={page === 1}
                             onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            className="px-3 py-1 bg-slate-800 rounded disabled:opacity-50"
+                            className="px-3 py-1 bg-bg-surface rounded disabled:opacity-50"
                         >
                             上一頁
                         </button>
-                        <span className="px-3 py-1 text-slate-400">
+                        <span className="px-3 py-1 text-text-muted">
                             {page} / {pagination.totalPages}
                         </span>
                         <button
                             disabled={page === pagination.totalPages}
                             onClick={() => setPage((p) => p + 1)}
-                            className="px-3 py-1 bg-slate-800 rounded disabled:opacity-50"
+                            className="px-3 py-1 bg-bg-surface rounded disabled:opacity-50"
                         >
                             下一頁
                         </button>
@@ -315,14 +315,14 @@ function RoleChangeModal({
 
     return (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-violet-500/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-bg-surface border border-violet-500/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="p-6">
-                    <h2 className="text-xl font-bold text-slate-100 mb-1">
+                    <h2 className="text-xl font-bold text-text-base mb-1">
                         變更用戶角色
                     </h2>
-                    <p className="text-sm text-slate-400 mb-6">
+                    <p className="text-sm text-text-muted mb-6">
                         {user.name || user.email}
-                        <span className="text-slate-600 ml-2 text-xs">
+                        <span className="text-text-muted/60 ml-2 text-xs">
                             ({user.email})
                         </span>
                     </p>
@@ -341,24 +341,24 @@ function RoleChangeModal({
                                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition ${
                                             isSelected
                                                 ? "border-violet-500 bg-violet-500/10"
-                                                : "border-slate-700 hover:border-slate-600 bg-slate-800/50"
+                                                : "border-border-base hover:border-text-muted/30 bg-bg-surface/50"
                                         }`}
                                     >
                                         <Icon
                                             className={`h-5 w-5 ${
                                                 isSelected
                                                     ? "text-violet-400"
-                                                    : "text-slate-500"
+                                                    : "text-text-muted"
                                             }`}
                                         />
                                         <div className="flex-1">
-                                            <div className="text-sm font-medium text-slate-200">
+                                            <div className="text-sm font-medium text-text-base">
                                                 {config.label}
-                                                <span className="text-slate-600 text-xs ml-2">
+                                                <span className="text-text-muted/60 text-xs ml-2">
                                                     {role}
                                                 </span>
                                             </div>
-                                            <div className="text-xs text-slate-500">
+                                            <div className="text-xs text-text-muted">
                                                 {role === "ADMIN" &&
                                                     "完整系統管理權限"}
                                                 {role === "MODERATOR" &&
@@ -368,7 +368,7 @@ function RoleChangeModal({
                                             </div>
                                         </div>
                                         {isCurrent && (
-                                            <span className="text-xs text-slate-500 px-2 py-0.5 rounded bg-slate-700/50">
+                                            <span className="text-xs text-text-muted px-2 py-0.5 rounded bg-bg-base/50">
                                                 目前
                                             </span>
                                         )}
@@ -383,10 +383,10 @@ function RoleChangeModal({
                     )}
                 </div>
 
-                <div className="px-6 py-4 bg-slate-950/50 flex justify-end gap-3 border-t border-slate-800">
+                <div className="px-6 py-4 bg-bg-base/50 flex justify-end gap-3 border-t border-border-base">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 text-sm text-slate-300 hover:text-white transition"
+                        className="px-4 py-2 text-sm text-text-muted hover:text-text-base transition"
                     >
                         取消
                     </button>

@@ -23,6 +23,10 @@ export const ExtractedQuestionSchema = z.object({
     explanation: z.string().nullish(),
     /** AI signals a manual image crop is needed */
     imagePlaceholders: z.array(z.string()).nullish(),
+    /** AI-estimated difficulty: 1 (easy) → 5 (very hard) */
+    difficulty: z.number().int().min(1).max(5).nullish(),
+    /** AI-suggested tag slugs matching the preset tag taxonomy */
+    tagSlugs: z.array(z.string()).nullish(),
 });
 
 export type ExtractedQuestion = z.infer<typeof ExtractedQuestionSchema>;

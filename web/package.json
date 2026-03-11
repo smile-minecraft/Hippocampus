@@ -13,7 +13,8 @@
     "test": "vitest",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed-tags": "tsx prisma/seed-tags.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -85,17 +85,17 @@ export default function TagsManagerPage() {
     return (
         <>
             <main className="min-h-screen bg-bg-base pb-12 transition-colors duration-300">
-                <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto text-slate-100">
+                <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto text-text-base">
                     <div className="flex justify-between items-center">
                         <div>
                             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-cyan-500">
                                 標籤系統管理中心
                             </h1>
-                            <p className="text-slate-400 mt-1">管理與合併全站多維度題庫標籤</p>
+                            <p className="text-text-muted mt-1">管理與合併全站多維度題庫標籤</p>
                         </div>
                         <button
                             onClick={() => setIsCreateOpen(true)}
-                            className="px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg text-sm font-semibold transition"
+                            className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-sm font-semibold transition"
                         >
                             新增標籤
                         </button>
@@ -103,17 +103,17 @@ export default function TagsManagerPage() {
 
                     <div className="flex gap-4 mb-6">
                         <div className="relative flex-1 max-w-md">
-                            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <Search className="absolute left-3 top-3 h-4 w-4 text-text-muted" />
                             <input
                                 type="text"
                                 placeholder="搜尋標籤名稱或群組..."
-                                className="w-full pl-10 pr-4 py-2 bg-slate-800 border-slate-700 rounded-lg text-sm focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
+                                className="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
                                 value={search}
                                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                             />
                         </div>
                         <select
-                            className="px-4 py-2 bg-slate-800 border-slate-700 rounded-lg text-sm outline-none"
+                            className="px-4 py-2 bg-bg-surface border border-border-base rounded-lg text-sm text-text-base outline-none"
                             value={dimension}
                             onChange={(e) => { setDimension(e.target.value); setPage(1); }}
                         >
@@ -128,21 +128,21 @@ export default function TagsManagerPage() {
                     {/* Usage Statistics Summary */}
                     {tagStats && (
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
-                                <div className="text-2xl font-bold text-slate-100">{tagStats.total}</div>
-                                <div className="text-xs text-slate-400 mt-1">此頁標籤數</div>
+                            <div className="bg-bg-surface/50 border border-border-base rounded-xl p-4">
+                                <div className="text-2xl font-bold text-text-base">{tagStats.total}</div>
+                                <div className="text-xs text-text-muted mt-1">此頁標籤數</div>
                             </div>
-                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+                            <div className="bg-bg-surface/50 border border-border-base rounded-xl p-4">
                                 <div className="text-2xl font-bold text-teal-400">{tagStats.totalQuestionLinks}</div>
-                                <div className="text-xs text-slate-400 mt-1">題目關聯總數</div>
+                                <div className="text-xs text-text-muted mt-1">題目關聯總數</div>
                             </div>
-                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+                            <div className="bg-bg-surface/50 border border-border-base rounded-xl p-4">
                                 <div className={`text-2xl font-bold ${tagStats.unused > 0 ? 'text-amber-400' : 'text-green-400'}`}>
                                     {tagStats.unused}
                                 </div>
-                                <div className="text-xs text-slate-400 mt-1">未使用標籤</div>
+                                <div className="text-xs text-text-muted mt-1">未使用標籤</div>
                             </div>
-                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
+                            <div className="bg-bg-surface/50 border border-border-base rounded-xl p-4">
                                 <div className="flex gap-2 flex-wrap">
                                     {Object.entries(tagStats.byDimension).map(([dim, count]) => (
                                         <span key={dim} className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">
@@ -150,14 +150,14 @@ export default function TagsManagerPage() {
                                         </span>
                                     ))}
                                 </div>
-                                <div className="text-xs text-slate-400 mt-1">維度分佈</div>
+                                <div className="text-xs text-text-muted mt-1">維度分佈</div>
                             </div>
                         </div>
                     )}
 
-                    <div className="bg-slate-800/50 rounded-xl overflow-hidden border border-slate-700">
+                    <div className="bg-bg-surface/50 rounded-xl overflow-hidden border border-border-base">
                         <table className="w-full text-left text-sm whitespace-nowrap">
-                            <thead className="bg-slate-800/80 text-slate-400 border-b border-slate-700">
+                            <thead className="bg-bg-surface/80 text-text-muted border-b border-border-base">
                                 <tr>
                                     <th className="px-6 py-4 font-medium">標籤名稱 (Name)</th>
                                     <th className="px-6 py-4 font-medium">維度 (Dimension)</th>
@@ -166,10 +166,10 @@ export default function TagsManagerPage() {
                                     <th className="px-6 py-4 font-medium text-right">操作</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700/50">
+                            <tbody className="divide-y divide-border-base">
                                 {isLoading ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                        <td colSpan={5} className="px-6 py-12 text-center text-text-muted">
                                             <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
                                             載入中...
                                         </td>
@@ -183,25 +183,25 @@ export default function TagsManagerPage() {
                                     </tr>
                                 ) : tagsData?.data.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                                        <td colSpan={5} className="px-6 py-12 text-center text-text-muted">
                                             沒有找到符合條件的標籤
                                         </td>
                                     </tr>
                                 ) : tagsData?.data.map((tag) => (
-                                    <tr key={tag.id} className="hover:bg-slate-800 transition-colors">
-                                        <td className="px-6 py-3 font-medium text-slate-200">
+                                    <tr key={tag.id} className="hover:bg-bg-surface transition-colors">
+                                        <td className="px-6 py-3 font-medium text-text-base">
                                             <div className="flex items-center gap-2">
                                                 {tag.name}
-                                                <span className="text-xs text-slate-500">({tag.slug})</span>
+                                                <span className="text-xs text-text-muted">({tag.slug})</span>
                                             </div>
                                         </td>
                                         <td className="px-6 py-3">
-                                            <span className="px-2 py-1 rounded bg-slate-700/50 text-xs text-indigo-300">
+                                            <span className="px-2 py-1 rounded bg-bg-base/50 text-xs text-indigo-300 dark:text-indigo-300 border border-border-base">
                                                 {tag.dimension}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-3 text-slate-300">
-                                            {tag.groupName || <span className="text-slate-600">—</span>}
+                                        <td className="px-6 py-3 text-text-muted">
+                                            {tag.groupName || <span className="text-text-muted/60">—</span>}
                                         </td>
                                         <td className="px-6 py-3 text-right">
                                             {(() => {
@@ -219,10 +219,10 @@ export default function TagsManagerPage() {
                                             })()}
                                         </td>
                                         <td className="px-6 py-3 text-right">
-                                            <div className="flex justify-end gap-2 text-slate-400">
+                                            <div className="flex justify-end gap-2 text-text-muted">
                                                 <button
                                                     onClick={() => setEditingTag(tag)}
-                                                    className="p-1.5 hover:bg-slate-700 hover:text-white rounded" title="編輯"
+                                                    className="p-1.5 hover:bg-bg-base hover:text-text-base rounded" title="編輯"
                                                 >
                                                     <Edit2 className="h-4 w-4" />
                                                 </button>
@@ -252,17 +252,17 @@ export default function TagsManagerPage() {
                             <button
                                 disabled={page === 1}
                                 onClick={() => setPage(p => Math.max(1, p - 1))}
-                                className="px-3 py-1 bg-slate-800 rounded disabled:opacity-50"
+                                className="px-3 py-1 bg-bg-surface rounded disabled:opacity-50"
                             >
                                 上一頁
                             </button>
-                            <span className="px-3 py-1 text-slate-400">
+                            <span className="px-3 py-1 text-text-muted">
                                 {page} / {tagsData.meta.totalPages}
                             </span>
                             <button
                                 disabled={page === tagsData.meta.totalPages}
                                 onClick={() => setPage(p => p + 1)}
-                                className="px-3 py-1 bg-slate-800 rounded disabled:opacity-50"
+                                className="px-3 py-1 bg-bg-surface rounded disabled:opacity-50"
                             >
                                 下一頁
                             </button>
@@ -307,39 +307,39 @@ function MergeTagModal({ sourceTag, onClose, onMerge, isMerging }: { sourceTag: 
 
     return (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-red-500/30 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-bg-surface border border-red-500/30 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <div className="p-6">
                     <div className="flex items-center gap-3 text-red-400 mb-4">
                         <div className="bg-red-500/10 p-2 rounded-full">
                             <AlertTriangle className="h-6 w-6" />
                         </div>
-                        <h2 className="text-xl font-bold text-slate-100">危險區域：標籤合併</h2>
+                        <h2 className="text-xl font-bold text-text-base">危險區域：標籤合併</h2>
                     </div>
 
-                    <p className="text-slate-300 text-sm leading-relaxed mb-6">
-                        您正準備將圖書庫中所有關聯至 <strong className="text-white px-1.5 py-0.5 bg-slate-800 rounded">{sourceTag.name}</strong> 的題目轉移至另一個標籤，並<strong className="text-red-400 font-bold ml-1">徹除</strong>原來的來源實體。此操作不可逆轉，請格外小心。
+                    <p className="text-text-muted text-sm leading-relaxed mb-6">
+                        您正準備將圖書庫中所有關聯至 <strong className="text-text-base px-1.5 py-0.5 bg-bg-base rounded">{sourceTag.name}</strong> 的題目轉移至另一個標籤，並<strong className="text-red-400 font-bold ml-1">徹除</strong>原來的來源實體。此操作不可逆轉，請格外小心。
                     </p>
 
                     <div className="space-y-5">
                         <div className="space-y-2 relative">
-                            <label className="text-sm font-medium text-slate-300">1. 尋找目標標籤</label>
+                            <label className="text-sm font-medium text-text-muted">1. 尋找目標標籤</label>
                             <input
                                 type="text"
                                 placeholder="輸入關鍵字尋找要合併過去的標籤..."
-                                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 focus:border-indigo-500 outline-none"
+                                className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-indigo-500 outline-none"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                             {/* Simple Dropdown for searching */}
                             {searchResults && searchResults.data.length > 0 && searchQuery && (
-                                <div className="absolute top-16 w-full max-h-48 overflow-y-auto bg-slate-800 border-x border-b border-slate-700 rounded-b-lg shadow-xl z-10">
+                                <div className="absolute top-16 w-full max-h-48 overflow-y-auto bg-bg-surface border-x border-b border-border-base rounded-b-lg shadow-xl z-10">
                                     {searchResults.data.filter(t => t.id !== sourceTag.id).map(t => (
                                         <div
                                             key={t.id}
                                             onClick={() => { setTargetTagId(t.id); setSearchQuery(t.name); }}
-                                            className={`px-4 py-2 text-sm cursor-pointer hover:bg-indigo-600 ${targetTagId === t.id ? "bg-indigo-600 font-bold" : ""}`}
+                                            className={`px-4 py-2 text-sm cursor-pointer hover:bg-indigo-600 hover:text-white ${targetTagId === t.id ? "bg-indigo-600 text-white font-bold" : "text-text-base"}`}
                                         >
-                                            {t.name} <span className="text-slate-400 text-xs ml-2">{t.groupName || t.dimension}</span>
+                                            {t.name} <span className="text-text-muted text-xs ml-2">{t.groupName || t.dimension}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -347,16 +347,16 @@ function MergeTagModal({ sourceTag, onClose, onMerge, isMerging }: { sourceTag: 
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">
-                                2. 確認防護機制 <span className="text-slate-500 text-xs">(阻斷肌肉記憶)</span>
+                            <label className="text-sm font-medium text-text-muted">
+                                2. 確認防護機制 <span className="text-text-muted/60 text-xs">(阻斷肌肉記憶)</span>
                             </label>
                             <p className="text-xs text-red-400/80 mb-1">
-                                請手動輸入即將被消滅的來源名稱「<span className="font-bold text-white select-all">{sourceTag.name}</span>」以解除鎖定。
+                                請手動輸入即將被消滅的來源名稱「<span className="font-bold text-text-base select-all">{sourceTag.name}</span>」以解除鎖定。
                             </p>
                             <input
                                 type="text"
                                 placeholder={sourceTag.name}
-                                className="w-full px-3 py-2 bg-slate-950 border-2 border-slate-700 rounded-lg text-sm text-red-300 focus:border-red-500 outline-none font-mono"
+                                className="w-full px-3 py-2 bg-bg-base border-2 border-border-base rounded-lg text-sm text-red-500 dark:text-red-300 focus:border-red-500 outline-none font-mono"
                                 value={confirmName}
                                 onChange={(e) => setConfirmName(e.target.value)}
                                 autoComplete="off"
@@ -365,10 +365,10 @@ function MergeTagModal({ sourceTag, onClose, onMerge, isMerging }: { sourceTag: 
                     </div>
                 </div>
 
-                <div className="px-6 py-4 bg-slate-950/50 flex justify-end gap-3 border-t border-slate-800">
+                <div className="px-6 py-4 bg-bg-base/50 flex justify-end gap-3 border-t border-border-base">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 text-sm text-slate-300 hover:text-white transition"
+                        className="px-4 py-2 text-sm text-text-muted hover:text-text-base transition"
                     >
                         取消
                     </button>
@@ -426,47 +426,47 @@ function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onC
 
     return (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-teal-500/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-bg-surface border border-teal-500/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 <form onSubmit={handleSubmit}>
                     <div className="p-6">
                         <div className="flex items-center gap-3 text-teal-400 mb-6">
-                            <h2 className="text-xl font-bold text-slate-100">新增標籤</h2>
+                            <h2 className="text-xl font-bold text-text-base">新增標籤</h2>
                         </div>
 
                         <div className="space-y-4">
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-300">標籤名稱 (Name) <span className="text-red-400">*</span></label>
+                                <label className="text-sm font-medium text-text-muted">標籤名稱 (Name) <span className="text-red-400">*</span></label>
                                 <input
                                     type="text"
                                     required
                                     placeholder="例如：生理解剖學、循環系統"
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
+                                    className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
                                 />
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-300">
-                                    Slug <span className="text-slate-500 text-xs">(自動從名稱產生，可手動覆寫)</span>
+                                <label className="text-sm font-medium text-text-muted">
+                                    Slug <span className="text-text-muted/60 text-xs">(自動從名稱產生，可手動覆寫)</span>
                                 </label>
                                 <input
                                     type="text"
                                     placeholder={autoSlug || "auto-generated-slug"}
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition font-mono"
+                                    className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition font-mono"
                                     value={slugOverride}
                                     onChange={(e) => setSlugOverride(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
                                 />
                                 {effectiveSlug && (
-                                    <p className="text-xs text-slate-500">預覽: <code className="text-teal-400">{effectiveSlug}</code></p>
+                                    <p className="text-xs text-text-muted">預覽: <code className="text-teal-400">{effectiveSlug}</code></p>
                                 )}
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-slate-300">所屬維度 (Dimension) <span className="text-red-400">*</span></label>
+                                <label className="text-sm font-medium text-text-muted">所屬維度 (Dimension) <span className="text-red-400">*</span></label>
                                 <select
                                     required
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
+                                    className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
                                     value={dimension}
                                     onChange={(e) => setDimension(e.target.value as CreateTagPayload["dimension"])}
                                 >
@@ -475,15 +475,15 @@ function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onC
                                     <option value="EXAM_CATEGORY">EXAM_CATEGORY (考試類別)</option>
                                     <option value="META">META (通用狀態)</option>
                                 </select>
-                                <p className="text-xs text-slate-500">標籤必須歸屬於系統預設的四大維度之一</p>
+                                <p className="text-xs text-text-muted">標籤必須歸屬於系統預設的四大維度之一</p>
                             </div>
 
                             <div className="space-y-2 relative">
-                                <label className="text-sm font-medium text-slate-300">次群組名稱 (Group Name) <span className="text-slate-500 text-xs">(選填)</span></label>
+                                <label className="text-sm font-medium text-text-muted">次群組名稱 (Group Name) <span className="text-text-muted/60 text-xs">(選填)</span></label>
                                 <input
                                     type="text"
                                     placeholder="輸入或選擇現有群組..."
-                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
+                                    className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition"
                                     value={groupName}
                                     onChange={(e) => setGroupName(e.target.value)}
                                     onFocus={() => setShowGroupSuggestions(true)}
@@ -491,12 +491,12 @@ function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onC
                                     onBlur={() => setTimeout(() => setShowGroupSuggestions(false), 200)}
                                 />
                                 {showGroupSuggestions && filteredGroups.length > 0 && (
-                                    <div className="absolute top-16 w-full max-h-40 overflow-y-auto bg-slate-800 border-x border-b border-slate-700 rounded-b-lg shadow-xl z-20">
+                                    <div className="absolute top-16 w-full max-h-40 overflow-y-auto bg-bg-surface border-x border-b border-border-base rounded-b-lg shadow-xl z-20">
                                         {filteredGroups.map(g => (
                                             <div
                                                 key={g}
                                                 onClick={() => { setGroupName(g); setShowGroupSuggestions(false); }}
-                                                className="px-4 py-2 text-sm text-slate-300 cursor-pointer hover:bg-teal-600/50 transition-colors"
+                                                className="px-4 py-2 text-sm text-text-muted cursor-pointer hover:bg-teal-600/50 hover:text-white transition-colors"
                                             >
                                                 {g}
                                             </div>
@@ -507,11 +507,11 @@ function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onC
                         </div>
                     </div>
 
-                    <div className="px-6 py-4 bg-slate-950/50 flex justify-end gap-3 border-t border-slate-800">
+                    <div className="px-6 py-4 bg-bg-base/50 flex justify-end gap-3 border-t border-border-base">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 transition"
+                            className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:bg-bg-surface transition"
                             disabled={isCreating}
                         >
                             取消

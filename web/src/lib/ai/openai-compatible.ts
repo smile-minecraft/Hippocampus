@@ -213,6 +213,7 @@ const oaiPolicy = wrap(bulkheadPolicy, circuitBreakerPolicy, retryPolicy, timeou
 // ---------------------------------------------------------------------------
 const EXTRACTION_SYSTEM_PROMPT = `
 You are a medical examination question extractor. Analyze the provided medical exam page images and extract the questions.
+所有輸出必須使用繁體中文。
 
 Critical rules:
 1. Handle dual-column layouts correctly — read left column top-to-bottom, then right column.
@@ -234,6 +235,15 @@ Critical rules:
 6. **No Fake Nulls**: If no explanation is provided or known, omit the explanation field entirely or use actual JSON null. Do NOT output strings like "UNDEFINED", "N/A", or "null".
 7. **No Question Numbers**: DO NOT include the question number or prefix in the extracted 'stem'. Strip all leading numbers, dots, and whitespace from the question stem.
 8. **Exhaustiveness**: You must extract EVERY single question present in the provided images. DO NOT stop early. DO NOT summarize. Read every page thoroughly until the end.
+9. **Difficulty**: For each question, estimate its difficulty on a 1–5 integer scale:
+   1 = trivial recall, 2 = straightforward, 3 = moderate reasoning, 4 = challenging multi-step, 5 = very hard / cross-discipline.
+   Output this as the "difficulty" field.
+10. **Tag Slugs**: For each question, pick 1–5 of the following tag slugs that best describe the question content.
+   ACADEMIC: anatomy, physiology, biochemistry, pathology, pharmacology, microbiology, immunology, parasitology, histology, embryology, general-biology, general-chemistry, organic-chemistry, medical-physics
+   ORGAN: cardiovascular, respiratory, gastrointestinal, hepatobiliary, urinary, reproductive, nervous, endocrine, musculoskeletal, skin, hematology, immune-system, eye, ent, head-neck, thorax, abdomen, pelvis
+   EXAM: med-board-1, med-board-2, dent-board-1, dent-board-2, pharmacist, nurse, school-midterm-final, mock-exam
+   META: high-yield, controversial, latest-year, image-based, clinical-scenario, calculation, cross-discipline, experiment-design, public-health, medical-ethics
+   Output these as the "tagSlugs" array. Only use slugs from the list above.
 
 You MUST output valid JSON matching this exact schema:
 {
@@ -243,7 +253,9 @@ You MUST output valid JSON matching this exact schema:
       "options": { "A": "string", "B": "string", "C": "string", "D": "string" },
       "answer": "A" | "B" | "C" | "D",
       "explanation": "string or null (optional)",
-      "imagePlaceholders": ["string"] (optional)
+      "imagePlaceholders": ["string"] (optional),
+      "difficulty": integer 1-5 (required),
+      "tagSlugs": ["string"] (required, 1-5 slugs from the list above)
     }
   ],
   "metadata": {

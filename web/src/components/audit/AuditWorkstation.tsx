@@ -31,6 +31,7 @@ import {
     XCircle,
     CheckSquare,
     Square,
+    Sparkles,
 } from 'lucide-react'
 import { GroupedTagMultiSelect } from '@/components/quiz/GroupedTagMultiSelect'
 
@@ -122,6 +123,10 @@ export function AuditWorkstation() {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
     const [importYear, setImportYear] = useState<string>('')
     const [importExamType, setImportExamType] = useState<string>('')
+
+    // Explanation generation state
+    const [generatingExplanations, setGeneratingExplanations] = useState(false)
+    const [generatingExplanationIdx, setGeneratingExplanationIdx] = useState<number | null>(null)
 
     const fetchDrafts = useCallback(async () => {
         setLoading(true)
@@ -226,6 +231,85 @@ export function AuditWorkstation() {
             next.delete(draftId)
             return next
         })
+    }
+
+    // ---------------------------------------------------------------------------
+    // Explanation Generation
+    // ---------------------------------------------------------------------------
+    const generateExplanationsForAll = async () => {
+        if (!activeDraft || questions.length === 0) return
+        setGeneratingExplanations(true)
+        setSaveMsg(null)
+        try {
+            const res = await fetch('/api/llm/generate-explanations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': getCsrfToken(),
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    questions: questions.map(q => ({
+                        stem: q.stem,
+                        options: q.options,
+                        answer: q.answer,
+                    })),
+                }),
+            })
+            const data = await res.json()
+            if (data.ok && Array.isArray(data.data?.explanations)) {
+                const explanations = data.data.explanations as string[]
+                setDrafts(prev => prev.map(d => {
+                    if (d.id !== activeDraftId) return d
+                    const newQ = d.draftJson.questions.map((q, i) => ({
+                        ...q,
+                        explanation: explanations[i] || q.explanation || '',
+                    }))
+                    return { ...d, draftJson: { ...d.draftJson, questions: newQ } }
+                }))
+                setSaveMsg(`已為 ${explanations.filter(e => e).length} 題生成詳解`)
+                setTimeout(() => setSaveMsg(null), 5000)
+            } else {
+                setSaveMsg(`生成詳解失敗: ${data.message || '未知錯誤'}`)
+            }
+        } catch (err) {
+            log.error('audit', 'Batch generate explanations failed', { error: err instanceof Error ? err.message : String(err) })
+            setSaveMsg('生成詳解失敗')
+        } finally {
+            setGeneratingExplanations(false)
+        }
+    }
+
+    const generateExplanationForOne = async (index: number) => {
+        const q = questions[index]
+        if (!q) return
+        setGeneratingExplanationIdx(index)
+        try {
+            const res = await fetch('/api/llm/generate-explanations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': getCsrfToken(),
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    questions: [{ stem: q.stem, options: q.options, answer: q.answer }],
+                }),
+            })
+            const data = await res.json()
+            if (data.ok && Array.isArray(data.data?.explanations) && data.data.explanations[0]) {
+                updateQuestion(index, { explanation: data.data.explanations[0] })
+            } else {
+                setSaveMsg(`生成詳解失敗: ${data.message || '未知錯誤'}`)
+                setTimeout(() => setSaveMsg(null), 3000)
+            }
+        } catch (err) {
+            log.error('audit', 'Single generate explanation failed', { error: err instanceof Error ? err.message : String(err) })
+            setSaveMsg('生成詳解失敗')
+            setTimeout(() => setSaveMsg(null), 3000)
+        } finally {
+            setGeneratingExplanationIdx(null)
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -465,7 +549,7 @@ export function AuditWorkstation() {
             case 'APPROVED': return <span className="px-2 py-0.5 text-xs rounded-full bg-green-500/15 text-green-400">已通過</span>
             case 'REJECTED': return <span className="px-2 py-0.5 text-xs rounded-full bg-red-500/15 text-red-400">已退回</span>
             case 'PROCESSING': return <span className="px-2 py-0.5 text-xs rounded-full bg-blue-500/15 text-blue-400">解析中</span>
-            default: return <span className="px-2 py-0.5 text-xs rounded-full bg-slate-500/15 text-slate-400">{status}</span>
+            default: return <span className="px-2 py-0.5 text-xs rounded-full bg-primary-base/15 text-text-muted">{status}</span>
         }
     }
 
@@ -656,6 +740,16 @@ export function AuditWorkstation() {
                             >
                                 {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                                 儲存修改
+                            </button>
+                        )}
+                        {!isReadOnly && questions.length > 0 && (
+                            <button
+                                onClick={generateExplanationsForAll}
+                                disabled={generatingExplanations || saving}
+                                className="btn-secondary !px-5 !py-2.5 text-sm gap-2 !text-violet-500 !border-violet-500/30 hover:!bg-violet-500/10"
+                            >
+                                {generatingExplanations ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                                AI 批次生成詳解
                             </button>
                         )}
                         {saveMsg && (
@@ -928,7 +1022,17 @@ export function AuditWorkstation() {
                                     {isEditing ? (
                                         <div className="space-y-4">
                                             <div>
-                                                <label className="text-xs text-text-muted mb-1 block">詳解</label>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-xs text-text-muted">詳解</label>
+                                                    <button
+                                                        onClick={() => generateExplanationForOne(i)}
+                                                        disabled={generatingExplanationIdx === i || generatingExplanations}
+                                                        className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md text-violet-500 hover:bg-violet-500/10 border border-violet-500/30 transition-colors disabled:opacity-50"
+                                                    >
+                                                        {generatingExplanationIdx === i ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+                                                        AI 生成
+                                                    </button>
+                                                </div>
                                                 <textarea
                                                     value={q.explanation ?? ''}
                                                     onChange={(e) => updateQuestion(i, { explanation: e.target.value })}
@@ -941,7 +1045,7 @@ export function AuditWorkstation() {
                                                 <GroupedTagMultiSelect
                                                     selectedSlugs={q.tagSlugs ?? []}
                                                     onChange={(slugs) => updateQuestion(i, { tagSlugs: slugs })}
-                                                    className="w-full bg-slate-900/40"
+                                                    className="w-full bg-bg-base/40"
                                                 />
                                             </div>
                                         </div>
@@ -956,9 +1060,9 @@ export function AuditWorkstation() {
                                                 </div>
                                             )}
                                             {q.tagSlugs && q.tagSlugs.length > 0 && (
-                                                <div className="flex items-center gap-2 bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/50">
+                                                <div className="flex items-center gap-2 bg-bg-surface/40 p-2.5 rounded-xl border border-border-base">
                                                     <p className="text-xs font-semibold text-text-muted shrink-0">標籤</p>
-                                                    <p className="text-xs text-slate-400">
+                                                    <p className="text-xs text-text-muted">
                                                         已選 {q.tagSlugs.length} 個標籤 (進入編輯模式查看詳情)
                                                     </p>
                                                 </div>

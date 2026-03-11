@@ -70,10 +70,10 @@ export default function RegisterPage() {
     if (success) {
         return (
             <div className="min-h-screen bg-bg-base flex justify-center items-center p-4">
-                <div className="max-w-md w-full bg-slate-800/80 p-8 rounded-2xl border border-slate-700 shadow-2xl text-center space-y-4">
+                <div className="max-w-md w-full bg-bg-surface p-8 rounded-2xl border border-border-base shadow-2xl text-center space-y-4">
                     <Check className="size-12 text-green-400 mx-auto" />
-                    <h2 className="text-xl font-bold text-slate-100">註冊成功</h2>
-                    <p className="text-slate-400 text-sm">正在導向首頁...</p>
+                    <h2 className="text-xl font-bold text-text-base">註冊成功</h2>
+                    <p className="text-text-muted text-sm">正在導向首頁...</p>
                 </div>
             </div>
         )
@@ -81,14 +81,14 @@ export default function RegisterPage() {
 
     return (
         <div className="min-h-screen bg-bg-base flex justify-center items-center p-4">
-            <div className="max-w-md w-full bg-slate-800/80 p-8 rounded-2xl border border-slate-700 shadow-2xl relative overflow-hidden">
+            <div className="max-w-md w-full bg-bg-surface p-8 rounded-2xl border border-border-base shadow-2xl relative overflow-hidden">
                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-teal-400 to-cyan-500" />
 
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-cyan-500 mb-2">
                         建立帳號
                     </h1>
-                    <p className="text-slate-400 text-sm">加入 Hippocampus 醫學知識庫</p>
+                    <p className="text-text-muted text-sm">加入 Hippocampus 醫學知識庫</p>
                 </div>
 
                 {error && (
@@ -101,14 +101,14 @@ export default function RegisterPage() {
                 <form onSubmit={handleSubmit} className="space-y-5">
                     {/* Name */}
                     <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-slate-300 ml-1">
-                            姓名 <span className="text-slate-500">（選填）</span>
+                        <label className="text-sm font-medium text-text-muted ml-1">
+                            姓名 <span className="text-text-muted/60">（選填）</span>
                         </label>
                         <div className="relative">
-                            <User className="absolute left-3 top-2.5 h-5 w-5 text-slate-500" />
+                            <User className="absolute left-3 top-2.5 h-5 w-5 text-text-muted" />
                             <input
                                 type="text"
-                                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                                className="w-full bg-bg-base border border-border-base rounded-xl pl-10 pr-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
                                 placeholder="您的姓名"
@@ -121,12 +121,12 @@ export default function RegisterPage() {
 
                     {/* Email */}
                     <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-slate-300 ml-1">電子郵件</label>
+                        <label className="text-sm font-medium text-text-muted ml-1">電子郵件</label>
                         <div className="relative">
-                            <Mail className="absolute left-3 top-2.5 h-5 w-5 text-slate-500" />
+                            <Mail className="absolute left-3 top-2.5 h-5 w-5 text-text-muted" />
                             <input
                                 type="email"
-                                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                                className="w-full bg-bg-base border border-border-base rounded-xl pl-10 pr-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
                                 placeholder="name@example.com"
@@ -140,12 +140,12 @@ export default function RegisterPage() {
 
                     {/* Password */}
                     <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-slate-300 ml-1">密碼</label>
+                        <label className="text-sm font-medium text-text-muted ml-1">密碼</label>
                         <div className="relative">
-                            <Lock className="absolute left-3 top-2.5 h-5 w-5 text-slate-500" />
+                            <Lock className="absolute left-3 top-2.5 h-5 w-5 text-text-muted" />
                             <input
                                 type="password"
-                                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                                className="w-full bg-bg-base border border-border-base rounded-xl pl-10 pr-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
                                 placeholder="至少 8 字元，含大寫字母與數字"
@@ -159,12 +159,12 @@ export default function RegisterPage() {
 
                     {/* Confirm Password */}
                     <div className="space-y-1.5">
-                        <label className="text-sm font-medium text-slate-300 ml-1">確認密碼</label>
+                        <label className="text-sm font-medium text-text-muted ml-1">確認密碼</label>
                         <div className="relative">
-                            <Lock className="absolute left-3 top-2.5 h-5 w-5 text-slate-500" />
+                            <Lock className="absolute left-3 top-2.5 h-5 w-5 text-text-muted" />
                             <input
                                 type="password"
-                                className="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                                className="w-full bg-bg-base border border-border-base rounded-xl pl-10 pr-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
                                 value={confirmPassword}
                                 onChange={e => setConfirmPassword(e.target.value)}
                                 placeholder="再次輸入密碼"
@@ -181,7 +181,7 @@ export default function RegisterPage() {
                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : '建立帳號'}
                     </button>
 
-                    <p className="text-sm text-slate-400 text-center mt-4">
+                    <p className="text-sm text-text-muted text-center mt-4">
                         已有帳號？{' '}
                         <Link href="/login" className="text-teal-400 hover:underline font-medium">
                             登入
