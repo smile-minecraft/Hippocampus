@@ -27,7 +27,7 @@ export async function POST(
             return NextResponse.json({ ok: false, error: "此草稿已經匯入過，不可重複匯入" }, { status: 400 });
         }
 
-        const draftData = draft.draftJson as { questions?: Array<{ stem?: string; options?: Record<string, string>; answer?: string; explanation?: string; imagePlaceholders?: string[]; tagSlugs?: string[] }>; metadata?: { year?: number | string; examType?: string } };
+        const draftData = draft.draftJson as { questions?: Array<{ stem?: string; options?: Record<string, string>; answer?: string; explanation?: string; imagePlaceholders?: string[]; tagSlugs?: string[]; difficulty?: number }>; metadata?: { year?: number | string; examType?: string } };
         if (!draftData || !Array.isArray(draftData.questions)) {
             return NextResponse.json({ ok: false, error: "草稿資料格式異常，無法匯入" }, { status: 400 });
         }
