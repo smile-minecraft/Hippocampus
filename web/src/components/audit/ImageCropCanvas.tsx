@@ -210,12 +210,12 @@ export function ImageCropCanvas({
             })
 
             // 3. Get presigned URL from Agent B
-            const { presignedUrl, objectKey } = await fetchPresignedUrl(
+            const { uploadUrl, objectKey } = await fetchPresignedUrl(
                 `crops/${questionId}-${Date.now()}.webp`,
             )
 
             // 4. Upload directly to MinIO (bypasses Next.js server)
-            await uploadToMinIO(presignedUrl, blob, (pct) => setUploadProgress(pct))
+            await uploadToMinIO(uploadUrl, blob, (pct) => setUploadProgress(pct))
 
             // 5. Notify backend to bind objectKey → question record
             await bindUploadToQuestion({ objectKey, questionId, placeholder })

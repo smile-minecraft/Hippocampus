@@ -44,11 +44,13 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     try {
         const url = await presignedPutUrl(BUCKETS.ASSETS, objectKey, 300); // 5 minutes
+        const publicUrl = `${process.env.MINIO_PUBLIC_URL ?? `http://localhost:9000/${BUCKETS.ASSETS}`}/${objectKey}`;
 
         return Res.ok({
             uploadUrl: url,
             objectKey,
             bucket: BUCKETS.ASSETS,
+            publicUrl,
         });
     } catch (err: unknown) {
         log.error('upload', 'Presign URL generation failed', { error: err instanceof Error ? err.message : String(err) });

@@ -85,9 +85,9 @@ export type ApiResponse<T> = ApiSuccess<T> | ApiError
 // ---------------------------------------------------------------------------
 
 export interface PresignedUrlPayload {
-    presignedUrl: string  // Temporary PUT URL pointing to MinIO
+    uploadUrl: string     // Temporary PUT URL pointing to MinIO
     objectKey: string     // MinIO object key for subsequent binding call
-    expiresAt: number     // Unix timestamp (seconds)
+    publicUrl?: string    // Public CDN URL for preview
 }
 
 export interface UploadBindPayload {

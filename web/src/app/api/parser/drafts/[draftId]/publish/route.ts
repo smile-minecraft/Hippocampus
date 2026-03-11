@@ -27,7 +27,7 @@ export async function POST(
             return NextResponse.json({ ok: false, error: "此草稿已經匯入過，不可重複匯入" }, { status: 400 });
         }
 
-        const draftData = draft.draftJson as { questions?: Array<{ stem?: string; options?: Record<string, string>; answer?: string; explanation?: string; imagePlaceholders?: string[]; tagSlugs?: string[]; difficulty?: number }>; metadata?: { year?: number | string; examType?: string } };
+        const draftData = draft.draftJson as { questions?: Array<{ stem?: string; options?: Record<string, string>; answer?: string; explanation?: string; imagePlaceholders?: string[]; imageUrls?: string[]; tagSlugs?: string[]; difficulty?: number }>; metadata?: { year?: number | string; examType?: string } };
         if (!draftData || !Array.isArray(draftData.questions)) {
             return NextResponse.json({ ok: false, error: "草稿資料格式異常，無法匯入" }, { status: 400 });
         }
@@ -57,7 +57,7 @@ export async function POST(
                         options: q.options || {},
                         answer: q.answer || "A",
                         explanation: q.explanation || null,
-                        imageUrls: q.imagePlaceholders || [], // Treat placeholders as image URLs for now (or store appropriately)
+                        imageUrls: q.imageUrls || q.imagePlaceholders || [], // Use imageUrls if available, fallback to placeholders
                         difficulty: q.difficulty ?? 1, // Use AI-estimated difficulty, fallback to 1
                     },
                 });

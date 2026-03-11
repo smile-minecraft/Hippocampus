@@ -34,6 +34,7 @@ import {
     Sparkles,
 } from 'lucide-react'
 import { GroupedTagMultiSelect } from '@/components/quiz/GroupedTagMultiSelect'
+import { QuestionImageUploader } from './QuestionImageUploader'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +45,7 @@ interface ExtractedQuestion {
     answer: 'A' | 'B' | 'C' | 'D'
     explanation?: string
     imagePlaceholders?: string[]
+    imageUrls?: string[]
     tagSlugs?: string[]
 }
 
@@ -926,9 +928,9 @@ export function AuditWorkstation() {
                                     <p className="text-sm text-text-base leading-relaxed">
                                         <LatexText>{q.stem}</LatexText>
                                     </p>
-                                    {q.imagePlaceholders && q.imagePlaceholders.length > 0 && (
+                                    {q.imagePlaceholders && q.imagePlaceholders.length > (q.imageUrls?.length || 0) && (
                                         <span className="inline-block mt-1 text-xs text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded">
-                                            含 {q.imagePlaceholders.length} 張圖片待截取
+                                            含 {q.imagePlaceholders.length - (q.imageUrls?.length || 0)} 張圖片待截取
                                         </span>
                                     )}
                                 </button>
@@ -985,6 +987,53 @@ export function AuditWorkstation() {
                                             />
                                         </div>
                                     )}
+
+                                    {/* 圖片區域 (上傳與預覽) */}
+                                    {(q.imagePlaceholders?.length || q.imageUrls?.length || isEditing) ? (
+                                        <div className="space-y-3 p-3 bg-bg-surface/50 rounded-xl border border-border-base">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-semibold text-text-muted">圖片附件</p>
+                                                {isEditing && (
+                                                    <QuestionImageUploader
+                                                        onUploadComplete={(url) => {
+                                                            const newUrls = [...(q.imageUrls || []), url]
+                                                            updateQuestion(i, { imageUrls: newUrls })
+                                                        }}
+                                                    />
+                                                )}
+                                            </div>
+                                            {q.imageUrls && q.imageUrls.length > 0 && (
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                    {q.imageUrls.map((url, imgIdx) => (
+                                                        <div key={imgIdx} className="relative group rounded-lg overflow-hidden border border-border-base aspect-video bg-black/50">
+                                                                <img
+                                                                    src={url}
+                                                                    alt={`附件 ${imgIdx + 1}`}
+                                                                    className="w-full h-full object-contain"
+                                                                    onError={(e) => {
+                                                                        // Fallback if url is already a full URL or needs our specific CDN path
+                                                                        if (!url.startsWith('http') && !url.startsWith('/')) {
+                                                                            e.currentTarget.src = `/${url}`
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            {isEditing && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const newUrls = q.imageUrls!.filter((_, idx) => idx !== imgIdx)
+                                                                        updateQuestion(i, { imageUrls: newUrls })
+                                                                    }}
+                                                                    className="absolute top-1 right-1 p-1 bg-red-500/80 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                >
+                                                                    <Trash2 className="size-3" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : null}
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                         {(['A', 'B', 'C', 'D'] as const).map((key) => (
