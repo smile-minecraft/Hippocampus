@@ -91,7 +91,7 @@ vi.mock('next/server', () => ({
     },
 }))
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -116,7 +116,7 @@ afterEach(() => {
 describe('public routes', () => {
     it('passes through /api/auth/* without requiring a token', async () => {
         const req = makeRequest({ pathname: '/api/auth/login', method: 'POST' })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { type: string }).type).toBe('next')
         expect(lastJsonArgs).toBeNull()
@@ -124,14 +124,14 @@ describe('public routes', () => {
 
     it('passes through /api/questions without requiring a token', async () => {
         const req = makeRequest({ pathname: '/api/questions', method: 'GET' })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { type: string }).type).toBe('next')
     })
 
     it('passes through /api/tags without requiring a token', async () => {
         const req = makeRequest({ pathname: '/api/tags', method: 'GET' })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { type: string }).type).toBe('next')
     })
@@ -147,7 +147,7 @@ describe('header stripping', () => {
             pathname: '/api/auth/login',
             extraHeaders: { 'x-user-id': 'spoofed', 'x-user-role': 'ADMIN' },
         })
-        await middleware(req as never)
+        await proxy(req as never)
 
         // The headers passed to NextResponse.next should NOT have the spoofed values
         expect(lastNextArgs).not.toBeNull()
@@ -164,7 +164,7 @@ describe('header stripping', () => {
 describe('protected routes without token', () => {
     it('returns 401 when access_token cookie is missing', async () => {
         const req = makeRequest({ pathname: '/api/protected', method: 'GET' })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(401)
         expect((lastJsonArgs?.body as { error: { code: string } }).error.code).toBe('UNAUTHORIZED')
@@ -188,7 +188,7 @@ describe('valid token', () => {
             method: 'GET',
             accessToken: 'valid-jwt',
         })
-        await middleware(req as never)
+        await proxy(req as never)
 
         expect(lastNextArgs).not.toBeNull()
         const passedHeaders = (lastNextArgs?.request as { headers: FakeHeaders })?.headers
@@ -206,7 +206,7 @@ describe('valid token', () => {
             method: 'GET',
             accessToken: 'valid-jwt',
         })
-        await middleware(req as never)
+        await proxy(req as never)
 
         const passedHeaders = (lastNextArgs?.request as { headers: FakeHeaders })?.headers
         expect(passedHeaders?.get('x-user-role')).toBe('USER')
@@ -222,7 +222,7 @@ describe('valid token', () => {
             method: 'GET',
             accessToken: 'jwt-no-sub',
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(401)
     })
@@ -247,7 +247,7 @@ describe('CSRF validation', () => {
             csrfCookie: 'token-abc',
             csrfHeader: 'token-abc',
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { type: string }).type).toBe('next')
     })
@@ -259,7 +259,7 @@ describe('CSRF validation', () => {
             accessToken: 'valid-jwt',
             csrfHeader: 'token-abc',
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(403)
         expect((lastJsonArgs?.body as { error: { code: string } }).error.code).toBe('FORBIDDEN')
@@ -272,7 +272,7 @@ describe('CSRF validation', () => {
             accessToken: 'valid-jwt',
             csrfCookie: 'token-abc',
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(403)
     })
@@ -285,7 +285,7 @@ describe('CSRF validation', () => {
             csrfCookie: 'token-aaa',
             csrfHeader: 'token-bbb',
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(403)
     })
@@ -297,7 +297,7 @@ describe('CSRF validation', () => {
             accessToken: 'valid-jwt',
             // no CSRF tokens
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { type: string }).type).toBe('next')
     })
@@ -310,7 +310,7 @@ describe('CSRF validation', () => {
                 accessToken: 'valid-jwt',
                 // no CSRF tokens
             })
-            const res = await middleware(req as never)
+            const res = await proxy(req as never)
 
             expect((res as { status: number }).status).toBe(403)
         })
@@ -331,7 +331,7 @@ describe('token errors', () => {
             pathname: '/api/protected',
             accessToken: 'expired-jwt',
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(401)
         expect((lastJsonArgs?.body as { error: { message: string } }).error.message).toContain('過期')
@@ -344,7 +344,7 @@ describe('token errors', () => {
             pathname: '/api/protected',
             accessToken: 'tampered-jwt',
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(401)
         expect((lastJsonArgs?.body as { error: { message: string } }).error.message).toContain('無效')
@@ -357,7 +357,7 @@ describe('token errors', () => {
             pathname: '/api/protected',
             accessToken: 'expired-jwt',
         })
-        const res = await middleware(req as never)
+        const res = await proxy(req as never)
 
         expect((lastJsonArgs?.body as { error: { message: string } }).error.message).toContain('過期')
     })

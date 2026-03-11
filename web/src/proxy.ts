@@ -1,5 +1,5 @@
 /**
- * middleware.ts — Next.js Edge Middleware (Auth + CSRF Gate)
+ * proxy.ts — Next.js Edge Middleware (Auth + CSRF Gate)
  *
  * Execution environment: Edge Runtime (V8 isolate, not Node.js).
  *  - No access to Node.js APIs (fs, crypto module, etc.)
@@ -13,8 +13,8 @@
  *     for all non-auth routes.
  *
  * NOTE: The refresh_token rotation itself happens in /api/auth/refresh —
- *       middleware only validates the access_token.  If the access_token is
- *       expired, middleware returns 401 and the client is expected to call
+ *       proxy only validates the access_token.  If the access_token is
+ *       expired, proxy returns 401 and the client is expected to call
  *       /api/auth/refresh automatically (frontend responsibility).
  *
  * Edge-Case Coverage:
@@ -70,7 +70,7 @@ function errorResponse(
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
     const { pathname } = request.nextUrl;
     const method = request.method;
 
