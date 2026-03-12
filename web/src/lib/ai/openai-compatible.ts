@@ -236,7 +236,7 @@ Critical rules:
 7. **No Question Numbers**: DO NOT include the question number or prefix in the extracted 'stem'. Strip all leading numbers, dots, and whitespace from the question stem.
 8. **Exhaustiveness**: You must extract EVERY single question present in the provided images. DO NOT stop early. DO NOT summarize. Read every page thoroughly until the end.
 9. **Difficulty**: For each question, estimate its difficulty on a 1–5 integer scale:
-   1 = trivial recall, 2 = straightforward, 3 = moderate reasoning, 4 = challenging multi-step, 5 = very hard / cross-discipline.
+   FROM THE PERSPECTIVE OF A MEDICAL STUDENT TAKING A LICENSING EXAM (台灣醫師國考): 1 = Basic definition/pure recall, 2 = Standard factual knowledge, 3 = Moderate clinical application/diagnosis, 4 = Complex differential diagnosis or multi-step reasoning, 5 = Rare edge cases, extremely difficult, or highly obscure knowledge.
    Output this as the "difficulty" field.`.trim();
 
 const EXTRACTION_JSON_SCHEMA_SUFFIX = `
