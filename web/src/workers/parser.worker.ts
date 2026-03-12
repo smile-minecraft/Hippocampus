@@ -17,7 +17,7 @@
  *   - ParsedDraft.errorLog captures failure details for admin review
  */
 
-import { Worker, type Job, Queue } from "bullmq";
+import { Worker, type Job, Queue, UnrecoverableError } from "bullmq";
 import { log, setLogSink } from "../lib/logger";
 import { createWriteStream } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
@@ -75,13 +75,13 @@ const AI_BATCH_SIZE = Number(process.env.AI_BATCH_SIZE) || 3;
 async function checkCancellation(job: Job<ParseDocumentJobData>, traceId: string): Promise<void> {
     if (job.data._cancelRequested) {
         log.info("parser-worker", `Job ${job.id} canceled by user`, { traceId, jobId: job.id });
-        throw new Error("任務已被用戶取消");
+        throw new UnrecoverableError("任務已被用戶取消");
     }
     const freshJob = await parserQueue.getJob(job.id!);
     if (freshJob?.data._cancelRequested) {
         job.data._cancelRequested = true;
         log.info("parser-worker", `Job ${job.id} canceled by user`, { traceId, jobId: job.id });
-        throw new Error("任務已被用戶取消");
+        throw new UnrecoverableError("任務已被用戶取消");
     }
 }
 
