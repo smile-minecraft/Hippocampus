@@ -18,7 +18,7 @@
  *   - Graceful shutdown with SIGTERM/SIGINT handling
  */
 
-import { Worker, type Job, Queue } from "bullmq";
+import { Worker, type Job, Queue, UnrecoverableError } from "bullmq";
 import { log, setLogSink } from "../lib/logger";
 import {
     bulkhead,
@@ -282,7 +282,7 @@ async function checkPauseAndCancel(
     // Check for cancel request
     if (job.data._cancelRequested) {
         log.info("explanation-worker", `Job ${job.id} canceled by user`, { traceId, jobId: job.id });
-        throw new Error("任務已被用戶取消");
+        throw new UnrecoverableError("任務已被用戶取消");
     }
 
     // Check for pause - wait until resumed
