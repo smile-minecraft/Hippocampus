@@ -4,11 +4,10 @@
 
 import React from "react";
 import { Box, Text } from "ink";
-import Spinner from "ink-spinner";
 import { useStore } from "zustand";
 import { tuiStore, type JobState } from "./store.js";
 
-const BAR_WIDTH = 24;
+const BAR_WIDTH = 20;
 
 function ProgressBar({ percent }: { percent: number }) {
     const filled = Math.round((percent / 100) * BAR_WIDTH);
@@ -37,29 +36,31 @@ function JobRow({ job }: { job: JobState }) {
         return () => clearInterval(timer);
     }, [job.startedAt]);
 
+    const isRunning = job.percent < 100;
+    const typeLabel = job.type === "parser" ? "PARSER" : "EXPLAIN";
+    const typeColor = job.type === "parser" ? "blue" : "magenta";
+
     return (
         <Box gap={1}>
             <Box width={10}>
                 <Text color="cyan">[{job.shortId}]</Text>
             </Box>
-            <Box width={20}>
+            <Box width={10}>
+                <Text color={typeColor} bold>{typeLabel}</Text>
+            </Box>
+            <Box width={18}>
                 <Text wrap="truncate-end">{job.filename || "unknown"}</Text>
             </Box>
             <Box width={BAR_WIDTH + 6}>
                 <ProgressBar percent={job.percent} />
             </Box>
-            <Box width={8}>
+            <Box width={6}>
                 <Text dimColor>{el}</Text>
             </Box>
             <Box flexGrow={1}>
-                {job.percent < 100 ? (
-                    <Text>
-                        <Text color="green"><Spinner type="dots" /></Text>
-                        {" "}{job.message}
-                    </Text>
-                ) : (
-                    <Text color="green">{job.message}</Text>
-                )}
+                <Text color={isRunning ? "green" : "cyan"}>
+                    {isRunning ? "▶" : "✓"} {job.message}
+                </Text>
             </Box>
         </Box>
     );
@@ -82,9 +83,10 @@ export default function ActiveJobs() {
             {/* Header row */}
             <Box gap={1}>
                 <Box width={10}><Text bold dimColor>JOB</Text></Box>
-                <Box width={20}><Text bold dimColor>FILE</Text></Box>
+                <Box width={10}><Text bold dimColor>TYPE</Text></Box>
+                <Box width={18}><Text bold dimColor>FILE</Text></Box>
                 <Box width={BAR_WIDTH + 6}><Text bold dimColor>PROGRESS</Text></Box>
-                <Box width={8}><Text bold dimColor>TIME</Text></Box>
+                <Box width={6}><Text bold dimColor>TIME</Text></Box>
                 <Box flexGrow={1}><Text bold dimColor>STAGE</Text></Box>
             </Box>
             {entries.map((job) => (

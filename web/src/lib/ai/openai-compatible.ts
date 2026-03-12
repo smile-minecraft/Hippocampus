@@ -211,7 +211,7 @@ const oaiPolicy = wrap(bulkheadPolicy, circuitBreakerPolicy, retryPolicy, timeou
 // ---------------------------------------------------------------------------
 // System prompt (same extraction rules as gemini.ts)
 // ---------------------------------------------------------------------------
-const EXTRACTION_SYSTEM_PROMPT = `
+const EXTRACTION_SYSTEM_PROMPT_PREFIX = `
 You are a medical examination question extractor. Analyze the provided medical exam page images and extract the questions.
 所有輸出必須使用繁體中文。
 
@@ -237,14 +237,9 @@ Critical rules:
 8. **Exhaustiveness**: You must extract EVERY single question present in the provided images. DO NOT stop early. DO NOT summarize. Read every page thoroughly until the end.
 9. **Difficulty**: For each question, estimate its difficulty on a 1–5 integer scale:
    1 = trivial recall, 2 = straightforward, 3 = moderate reasoning, 4 = challenging multi-step, 5 = very hard / cross-discipline.
-   Output this as the "difficulty" field.
-10. **Tag Slugs**: For each question, pick 1–5 of the following tag slugs that best describe the question content.
-   ACADEMIC: anatomy, physiology, biochemistry, pathology, pharmacology, microbiology, immunology, parasitology, histology, embryology, general-biology, general-chemistry, organic-chemistry, medical-physics
-   ORGAN: cardiovascular, respiratory, gastrointestinal, hepatobiliary, urinary, reproductive, nervous, endocrine, musculoskeletal, skin, hematology, immune-system, eye, ent, head-neck, thorax, abdomen, pelvis
-   EXAM: med-board-1, med-board-2, dent-board-1, dent-board-2, pharmacist, nurse, school-midterm-final, mock-exam
-   META: high-yield, controversial, latest-year, image-based, clinical-scenario, calculation, cross-discipline, experiment-design, public-health, medical-ethics
-   Output these as the "tagSlugs" array. Only use slugs from the list above.
+   Output this as the "difficulty" field.`.trim();
 
+const EXTRACTION_JSON_SCHEMA_SUFFIX = `
 You MUST output valid JSON matching this exact schema:
 {
   "questions": [
@@ -265,8 +260,15 @@ You MUST output valid JSON matching this exact schema:
   }
 }
 
-Output ONLY the JSON object. No markdown fences, no extra text.
-`.trim();
+Output ONLY the JSON object. No markdown fences, no extra text.`.trim();
+
+import { getTagSlugPromptSection } from "./tag-prompt";
+
+/** Build the full extraction system prompt with dynamic tag slugs from DB */
+async function buildExtractionPrompt(): Promise<string> {
+    const tagSection = await getTagSlugPromptSection();
+    return `${EXTRACTION_SYSTEM_PROMPT_PREFIX}\n${tagSection}\n\n${EXTRACTION_JSON_SCHEMA_SUFFIX}`;
+}
 
 // ---------------------------------------------------------------------------
 // Build OpenAI-format message content with vision
@@ -352,6 +354,13 @@ export async function extractQuestionsFromImages(
 
     const userContent = buildUserContent(imageDataParts);
 
+    // Build dynamic extraction prompt (fetches tag slugs from DB, cached 10 min)
+    const systemPrompt = await buildExtractionPrompt();
+
+    // Reasoning models (o1/o3/o4/gpt-5*) require "developer" role instead of "system"
+    const isReasoningModel = /^(o[134]|gpt-5)/.test(modelName);
+    const systemRole = isReasoningModel ? "developer" : "system";
+
     let attemptCount = 0;
     let lastElapsedMs = 0;
     let lastFinishReason = "unknown";
@@ -385,7 +394,7 @@ export async function extractQuestionsFromImages(
                 body: JSON.stringify({
                     model: modelName,
                     messages: [
-                        { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
+                        { role: systemRole, content: systemPrompt },
                         { role: "user", content: userContent },
                     ],
                     max_completion_tokens: 65536,

@@ -1,22 +1,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
-import { z } from "zod";
+import { UpdateQuestionSchema } from "@/lib/schemas";
 import { log } from "@/lib/logger";
-
-const QuestionUpdateSchema = z.object({
-    stem: z.string().min(1, "題幹不能為空").optional(),
-    options: z.object({
-        A: z.string(),
-        B: z.string(),
-        C: z.string(),
-        D: z.string()
-    }).optional(),
-    answer: z.enum(["A", "B", "C", "D"]).optional(),
-    explanation: z.string().nullable().optional(),
-    year: z.number().nullable().optional(),
-    examType: z.string().nullable().optional()
-});
 
 export async function PATCH(
     request: NextRequest,
@@ -31,7 +17,7 @@ export async function PATCH(
 
     try {
         const body = await request.json();
-        const parsed = QuestionUpdateSchema.safeParse(body);
+        const parsed = UpdateQuestionSchema.safeParse(body);
 
         if (!parsed.success) {
             return Res.badRequest("無效的更新載荷：" + parsed.error.errors[0].message);
@@ -43,12 +29,26 @@ export async function PATCH(
             return Res.notFound("查無此題目，或是已被刪除");
         }
 
+        const { tagIds, ...questionData } = parsed.data;
+
         // Update with transactional wrapper to prevent concurrency race conditions
         const updated = await db.$transaction(async (tx) => {
-            return await tx.question.update({
-                where: { id },
-                data: parsed.data
-            });
+            const q = Object.keys(questionData).length > 0
+                ? await tx.question.update({ where: { id }, data: questionData })
+                : await tx.question.findUniqueOrThrow({ where: { id } });
+
+            // Replace tags if tagIds was explicitly provided
+            if (tagIds !== undefined) {
+                await tx.questionTag.deleteMany({ where: { questionId: id } });
+                if (tagIds.length > 0) {
+                    await tx.questionTag.createMany({
+                        data: tagIds.map((tagId) => ({ questionId: id, tagId })),
+                        skipDuplicates: true,
+                    });
+                }
+            }
+
+            return q;
         });
 
         return Res.ok(updated);

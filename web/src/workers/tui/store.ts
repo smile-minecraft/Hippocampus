@@ -19,6 +19,7 @@ export interface JobState {
     percent: number;
     message: string;
     startedAt: number;
+    type: "parser" | "explanation";
 }
 
 export interface QueueCounts {
@@ -29,7 +30,7 @@ export interface QueueCounts {
     delayed: number;
 }
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = "debug" | "info" | "warn" | "error" | "next";
 
 export interface LogEntry {
     timestamp: string;
@@ -45,11 +46,18 @@ export interface TuiState {
     concurrency: number;
     provider: string;
 
+    // Next.js metadata
+    nextStatus: "starting" | "ready" | "error" | "stopped";
+    nextUrl: string;
+
     // Active jobs (keyed by jobId)
     jobs: Record<string, JobState>;
 
     // Queue statistics
-    queueCounts: QueueCounts;
+    queues: {
+        parser: QueueCounts;
+        explanation: QueueCounts;
+    };
 
     // Scrolling log buffer (ring buffer — keeps last MAX_LOGS entries)
     logs: LogEntry[];
@@ -61,6 +69,8 @@ export interface TuiState {
 
 const MAX_LOGS = 200;
 
+const defaultCounts: QueueCounts = { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 };
+
 // ---------------------------------------------------------------------------
 // Store singleton
 // ---------------------------------------------------------------------------
@@ -69,9 +79,14 @@ export const tuiStore = createStore<TuiState>(() => ({
     workerStartedAt: Date.now(),
     concurrency: 0,
     provider: "openai",
+    nextStatus: "stopped",
+    nextUrl: "",
 
     jobs: {},
-    queueCounts: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 },
+    queues: {
+        parser: { ...defaultCounts },
+        explanation: { ...defaultCounts },
+    },
     logs: [],
 }));
 
@@ -79,11 +94,11 @@ export const tuiStore = createStore<TuiState>(() => ({
 // Mutation helpers (called from worker code, logger, etc.)
 // ---------------------------------------------------------------------------
 
-export function upsertJob(jobId: string, update: Partial<JobState>): void {
+export function upsertJob(jobId: string, type: "parser" | "explanation", update: Partial<JobState>): void {
     tuiStore.setState((s) => {
         const existing = s.jobs[jobId];
         const job: JobState = existing
-            ? { ...existing, ...update }
+            ? { ...existing, ...update, type }
             : {
                   id: jobId,
                   shortId: jobId.slice(0, 8),
@@ -91,6 +106,7 @@ export function upsertJob(jobId: string, update: Partial<JobState>): void {
                   percent: 0,
                   message: "",
                   startedAt: Date.now(),
+                  type,
                   ...update,
               };
         return { jobs: { ...s.jobs, [jobId]: job } };
@@ -104,8 +120,20 @@ export function removeJob(jobId: string): void {
     });
 }
 
-export function setQueueCounts(counts: QueueCounts): void {
-    tuiStore.setState({ queueCounts: counts });
+export function setQueueCounts(queueName: "parser" | "explanation", counts: QueueCounts): void {
+    tuiStore.setState((s) => ({
+        queues: {
+            ...s.queues,
+            [queueName]: counts,
+        }
+    }));
+}
+
+export function setNextStatus(status: TuiState["nextStatus"], url?: string): void {
+    tuiStore.setState((s) => ({
+        nextStatus: status,
+        nextUrl: url ?? s.nextUrl,
+    }));
 }
 
 export function appendLog(entry: LogEntry): void {

@@ -1,5 +1,5 @@
 /**
- * tui/QueueStats.tsx — Compact one-line queue statistics.
+ * tui/QueueStats.tsx — Compact queue statistics for both queues.
  */
 
 import React from "react";
@@ -7,32 +7,27 @@ import { Box, Text } from "ink";
 import { useStore } from "zustand";
 import { tuiStore } from "./store.js";
 
+function QueueGroup({ name, color, counts }: { name: string; color: string; counts: { waiting: number; active: number; completed: number; failed: number; delayed: number } }) {
+    return (
+        <Box flexDirection="column" borderStyle="round" borderColor={color} paddingX={1}>
+            <Text bold color={color}>{name}</Text>
+            <Box gap={2}>
+                <Text dimColor>W:<Text color="yellow">{counts.waiting}</Text></Text>
+                <Text dimColor>A:<Text color="cyan">{counts.active}</Text></Text>
+                <Text dimColor>C:<Text color="green">{counts.completed}</Text></Text>
+                <Text dimColor>F:<Text color={counts.failed > 0 ? "red" : undefined}>{counts.failed}</Text></Text>
+            </Box>
+        </Box>
+    );
+}
+
 export default function QueueStats() {
-    const counts = useStore(tuiStore, (s) => s.queueCounts);
+    const queues = useStore(tuiStore, (s) => s.queues);
 
     return (
         <Box paddingX={1} gap={2}>
-            <Text dimColor>Queue:</Text>
-            <Text>
-                <Text dimColor>waiting </Text>
-                <Text color="yellow" bold>{counts.waiting}</Text>
-            </Text>
-            <Text>
-                <Text dimColor>active </Text>
-                <Text color="cyan" bold>{counts.active}</Text>
-            </Text>
-            <Text>
-                <Text dimColor>completed </Text>
-                <Text color="green" bold>{counts.completed}</Text>
-            </Text>
-            <Text>
-                <Text dimColor>failed </Text>
-                <Text color={counts.failed > 0 ? "red" : undefined} bold>{counts.failed}</Text>
-            </Text>
-            <Text>
-                <Text dimColor>delayed </Text>
-                <Text bold>{counts.delayed}</Text>
-            </Text>
+            <QueueGroup name="PARSER" color="blue" counts={queues.parser} />
+            <QueueGroup name="EXPLANATION" color="magenta" counts={queues.explanation} />
         </Box>
     );
 }

@@ -146,7 +146,7 @@ export interface GeminiMeta {
 // ---------------------------------------------------------------------------
 // System prompt (enforces JSON output + dual-column awareness)
 // ---------------------------------------------------------------------------
-const EXTRACTION_SYSTEM_PROMPT = `
+const EXTRACTION_SYSTEM_PROMPT_PREFIX = `
 You are a medical examination question extractor. Analyze the provided medical exam page images and extract the questions.
 所有輸出必須使用繁體中文。
 
@@ -172,15 +172,34 @@ Critical rules:
 7. **No Question Numbers**: DO NOT include the question number or prefix in the extracted 'stem'. For example, if the text says "1. During early embryonic development", extract ONLY "During early embryonic development". Strip all leading numbers, dots, and whitespace from the question stem.
 8. **Exhaustiveness**: You must extract EVERY single question present in the provided images. DO NOT stop early. DO NOT summarize. Read every page thoroughly until the end.
 9. **Difficulty**: For each question, estimate its difficulty on a 1–5 integer scale:
-   1 = trivial recall, 2 = straightforward, 3 = moderate reasoning, 4 = challenging multi-step, 5 = very hard / cross-discipline.
-   Output this as the "difficulty" field.
-10. **Tag Slugs**: For each question, pick 1–5 of the following tag slugs that best describe the question content.
-   ACADEMIC: anatomy, physiology, biochemistry, pathology, pharmacology, microbiology, immunology, parasitology, histology, embryology, general-biology, general-chemistry, organic-chemistry, medical-physics
-   ORGAN: cardiovascular, respiratory, gastrointestinal, hepatobiliary, urinary, reproductive, nervous, endocrine, musculoskeletal, skin, hematology, immune-system, eye, ent, head-neck, thorax, abdomen, pelvis
-   EXAM: med-board-1, med-board-2, dent-board-1, dent-board-2, pharmacist, nurse, school-midterm-final, mock-exam
-   META: high-yield, controversial, latest-year, image-based, clinical-scenario, calculation, cross-discipline, experiment-design, public-health, medical-ethics
-   Output these as the "tagSlugs" array. Only use slugs from the list above.
-`.trim();
+    1 = trivial recall, 2 = straightforward, 3 = moderate reasoning, 4 = challenging multi-step, 5 = very hard / cross-discipline.
+    Output this as the "difficulty" field.
+
+10. **CRITICAL - Stem Isolation**: The 'stem' field must contain ONLY the question text itself. DO NOT include options (A, B, C, D) or their content in the stem field. 
+    - WRONG: "Which is false? (A) Option 1 (B) Option 2"
+    - CORRECT: "Which is false?" (options go in the 'options' object only)
+    - If you see options embedded in the stem text, extract them and place them in the options object, keeping only the pure question text in stem.
+
+11. **CRITICAL - Explanation Cleaning**: The 'explanation' field must NOT contain question numbers or prefixes like:
+    - "第122題解析" → Remove "第122題解析："
+    - "Q122 Answer:" → Remove "Q122 Answer:"
+    - "解析：" or "Answer:" → Remove these prefixes
+    Start the explanation directly with the substantive content.
+    - WRONG: "第122題解析：This is because..."
+    - CORRECT: "This is because..."
+
+12. **CRITICAL - Option Separation**: When extracting options:
+    - Place each option's text ONLY in the options object (A, B, C, D keys)
+    - Do not repeat option text in the stem
+    - If options appear inline within the question text, separate them properly`.trim();
+
+import { getTagSlugPromptSection } from "./tag-prompt";
+
+/** Build the full extraction system prompt with dynamic tag slugs from DB */
+async function buildExtractionPrompt(): Promise<string> {
+    const tagSection = await getTagSlugPromptSection();
+    return `${EXTRACTION_SYSTEM_PROMPT_PREFIX}\n${tagSection}`;
+}
 
 // ---------------------------------------------------------------------------
 // Native Structured Output Schema Definition
@@ -269,9 +288,12 @@ export async function extractQuestionsFromImages(
     });
     onProgress?.(`準備送出 ${totalImages} 張圖片 (${totalSizeMB} MB) 至 AI 模型`);
 
+    // Build prompt with dynamic tag slugs from DB
+    const systemPrompt = await buildExtractionPrompt();
+
     const model = genAI.getGenerativeModel({
         model: modelName,
-        systemInstruction: EXTRACTION_SYSTEM_PROMPT,
+        systemInstruction: systemPrompt,
         generationConfig: {
             responseMimeType: "application/json",
             responseSchema: extractionResponseApiSchema,

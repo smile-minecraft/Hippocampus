@@ -13,7 +13,7 @@ export default function TagsManagerPage() {
     const [dimension, setDimension] = useState("");
 
     // Modals state
-    const [_editingTag, setEditingTag] = useState<AdminTagListResponse['data'][number] | null>(null);
+    const [editingTag, setEditingTag] = useState<AdminTagListResponse['data'][number] | null>(null);
     const [mergingTag, setMergingTag] = useState<AdminTagListResponse['data'][number] | null>(null);
     const [isCreateOpen, setIsCreateOpen] = useState(false);
 
@@ -54,7 +54,7 @@ export default function TagsManagerPage() {
         }
     });
 
-    const _editMutation = useMutation({
+    const editMutation = useMutation({
         mutationFn: (vars: { id: string, payload: Partial<CreateTagPayload> }) => updateAdminTag(vars.id, vars.payload),
         onSuccess: () => {
             setEditingTag(null);
@@ -271,6 +271,17 @@ export default function TagsManagerPage() {
 
                     {/* Merge Danger Zone Modal */}
                     {mergingTag && <MergeTagModal sourceTag={mergingTag} onClose={() => setMergingTag(null)} onMerge={(targetId) => mergeMutation.mutate({ sourceId: mergingTag.id, targetId })} isMerging={mergeMutation.isPending} />}
+
+                    {/* Edit Tag Modal */}
+                    {editingTag && (
+                        <EditTagModal
+                            tag={editingTag}
+                            onClose={() => setEditingTag(null)}
+                            onSave={(payload) => editMutation.mutate({ id: editingTag.id, payload })}
+                            isSaving={editMutation.isPending}
+                            existingGroups={existingGroups}
+                        />
+                    )}
 
                     {/* Create Tag Modal */}
                     {isCreateOpen && (
@@ -523,6 +534,143 @@ function CreateTagModal({ onClose, onCreate, isCreating, existingGroups }: { onC
                         >
                             {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                             確認新增
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Edit Tag Modal Component
+// ---------------------------------------------------------------------------
+function EditTagModal({ tag, onClose, onSave, isSaving, existingGroups }: {
+    tag: AdminTagListResponse['data'][number],
+    onClose: () => void,
+    onSave: (payload: Partial<CreateTagPayload>) => void,
+    isSaving: boolean,
+    existingGroups: string[],
+}) {
+    const [name, setName] = useState(tag.name);
+    const [slug, setSlug] = useState(tag.slug);
+    const [dimension, setDimension] = useState<CreateTagPayload["dimension"]>(tag.dimension as CreateTagPayload["dimension"]);
+    const [groupName, setGroupName] = useState(tag.groupName || "");
+    const [showGroupSuggestions, setShowGroupSuggestions] = useState(false);
+
+    const filteredGroups = existingGroups.filter(g => g.toLowerCase().includes(groupName.toLowerCase()) && g !== groupName);
+
+    // Determine if anything actually changed
+    const hasChanges = name.trim() !== tag.name
+        || slug !== tag.slug
+        || dimension !== tag.dimension
+        || (groupName.trim() || null) !== (tag.groupName || null);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim() || !slug) return;
+
+        const payload: Partial<CreateTagPayload> = {};
+        if (name.trim() !== tag.name) payload.name = name.trim();
+        if (slug !== tag.slug) payload.slug = slug;
+        if (dimension !== tag.dimension) payload.dimension = dimension;
+        if ((groupName.trim() || null) !== (tag.groupName || null)) payload.groupName = groupName.trim() || null;
+
+        onSave(payload);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-bg-surface border border-indigo-500/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <form onSubmit={handleSubmit}>
+                    <div className="p-6">
+                        <div className="flex items-center gap-3 text-indigo-400 mb-6">
+                            <Edit2 className="h-5 w-5" />
+                            <h2 className="text-xl font-bold text-text-base">編輯標籤</h2>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-text-muted">標籤名稱 (Name) <span className="text-red-400">*</span></label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-text-muted">Slug <span className="text-red-400">*</span></label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition font-mono"
+                                    value={slug}
+                                    onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-text-muted">所屬維度 (Dimension) <span className="text-red-400">*</span></label>
+                                <select
+                                    required
+                                    className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition"
+                                    value={dimension}
+                                    onChange={(e) => setDimension(e.target.value as CreateTagPayload["dimension"])}
+                                >
+                                    <option value="ACADEMIC">ACADEMIC (基礎學科)</option>
+                                    <option value="ORGAN">ORGAN (人體器官)</option>
+                                    <option value="EXAM_CATEGORY">EXAM_CATEGORY (考試類別)</option>
+                                    <option value="META">META (通用狀態)</option>
+                                </select>
+                            </div>
+
+                            <div className="space-y-2 relative">
+                                <label className="text-sm font-medium text-text-muted">次群組名稱 (Group Name) <span className="text-text-muted/60 text-xs">(選填)</span></label>
+                                <input
+                                    type="text"
+                                    placeholder="輸入或選擇現有群組..."
+                                    className="w-full px-3 py-2 bg-bg-base border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition"
+                                    value={groupName}
+                                    onChange={(e) => setGroupName(e.target.value)}
+                                    onFocus={() => setShowGroupSuggestions(true)}
+                                    onBlur={() => setTimeout(() => setShowGroupSuggestions(false), 200)}
+                                />
+                                {showGroupSuggestions && filteredGroups.length > 0 && (
+                                    <div className="absolute top-16 w-full max-h-40 overflow-y-auto bg-bg-surface border-x border-b border-border-base rounded-b-lg shadow-xl z-20">
+                                        {filteredGroups.map(g => (
+                                            <div
+                                                key={g}
+                                                onClick={() => { setGroupName(g); setShowGroupSuggestions(false); }}
+                                                className="px-4 py-2 text-sm text-text-muted cursor-pointer hover:bg-indigo-600/50 hover:text-white transition-colors"
+                                            >
+                                                {g}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="px-6 py-4 bg-bg-base/50 flex justify-end gap-3 border-t border-border-base">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:bg-bg-surface transition"
+                            disabled={isSaving}
+                        >
+                            取消
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSaving || !hasChanges || !name.trim() || !slug}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                            儲存變更
                         </button>
                     </div>
                 </form>

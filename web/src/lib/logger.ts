@@ -74,15 +74,21 @@ function emit(level: LogLevel, service: string, message: string, meta?: Record<s
         }
     } else {
         // Client-side: structured console output
-        // eslint-disable-next-line no-console -- logger is the sole approved console wrapper
-        const write = { error: console.error, warn: console.warn, info: console.info, debug: console.debug }[level]
+        // Note: Using console[level] dynamic access still loses `this` binding in Turpupack.
+        // Use explicit method calls to preserve console context so objects serialize correctly.
         const prefix = `[${service}]`
         const extra = meta && Object.keys(meta).length > 0 ? meta : undefined
-        if (extra) {
-            write(prefix, message, extra)
+        /* eslint-disable no-console -- logger is the sole approved console wrapper */
+        if (level === 'error') {
+            extra ? console.error(prefix, message, extra) : console.error(prefix, message)
+        } else if (level === 'warn') {
+            extra ? console.warn(prefix, message, extra) : console.warn(prefix, message)
+        } else if (level === 'info') {
+            extra ? console.info(prefix, message, extra) : console.info(prefix, message)
         } else {
-            write(prefix, message)
+            extra ? console.debug(prefix, message, extra) : console.debug(prefix, message)
         }
+        /* eslint-enable no-console */
     }
 }
 

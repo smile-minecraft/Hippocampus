@@ -3,10 +3,11 @@
  * GET  — Returns ParsedDraft records (for AuditWorkstation display)
  * PATCH — Updates a draft's draftJson and/or status (for inline editing & reject flow)
  */
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db/prisma";
 import { z } from "zod";
 import { log } from "@/lib/logger";
+import { Res } from "@/lib/api-response";
 
 const VALID_STATUSES = ["PROCESSING", "AWAITING_REVIEW", "APPROVED", "REJECTED"] as const;
 
@@ -30,13 +31,10 @@ export async function GET(request: NextRequest) {
             take: limit,
         });
 
-        return NextResponse.json({ ok: true, data: drafts });
+        return Res.ok(drafts);
     } catch (err) {
         log.error('parser', 'Drafts GET failed', { error: err instanceof Error ? err.message : String(err) });
-        return NextResponse.json(
-            { ok: false, error: String(err) },
-            { status: 500 }
-        );
+        return Res.internal(`載入草稿失敗: ${err instanceof Error ? err.message : String(err)}`);
     }
 }
 
@@ -59,10 +57,7 @@ export async function PATCH(request: NextRequest) {
         const body = await request.json();
         const validation = PatchSchema.safeParse(body);
         if (!validation.success) {
-            return NextResponse.json(
-                { ok: false, error: "Invalid payload", details: validation.error.flatten() },
-                { status: 400 }
-            );
+            return Res.fromZodError(validation.error);
         }
 
         const { draftId, draftJson, status, errorLog } = validation.data;
@@ -71,10 +66,7 @@ export async function PATCH(request: NextRequest) {
         if (draftJson) {
             const existing = await db.parsedDraft.findUnique({ where: { id: draftId }, select: { status: true } });
             if (existing?.status === "APPROVED") {
-                return NextResponse.json(
-                    { ok: false, error: "已核准的草稿不可再修改內容" },
-                    { status: 409 }
-                );
+                return Res.conflict("已核准的草稿不可再修改內容");
             }
         }
 
@@ -88,12 +80,9 @@ export async function PATCH(request: NextRequest) {
             data,
         });
 
-        return NextResponse.json({ ok: true, data: { id: updated.id, status: updated.status } });
+        return Res.ok({ id: updated.id, status: updated.status });
     } catch (err) {
         log.error('parser', 'Drafts PATCH failed', { error: err instanceof Error ? err.message : String(err) });
-        return NextResponse.json(
-            { ok: false, error: String(err) },
-            { status: 500 }
-        );
+        return Res.internal(`儲存草稿失敗: ${err instanceof Error ? err.message : String(err)}`);
     }
 }

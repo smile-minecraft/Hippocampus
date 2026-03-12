@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
 import { log } from "@/lib/logger";
+import { invalidateCache } from "@/lib/cache";
 
 const MergeTagsSchema = z.object({
     sourceTagId: z.string().uuid("來源標籤 ID 無效"),
@@ -102,6 +103,9 @@ export async function POST(request: NextRequest): Promise<Response> {
             // 配置 30 秒超時，防止巨量資料庫鎖定導致的事務崩潰
             timeout: 30000
         });
+
+        // 失效標籤相關緩存
+        await invalidateCache('tags:all', 'ai:tag-slugs-prompt');
 
         // 成功完成，回傳告知前端可以觸發 invalidateQueries
         return Res.ok({ message: "標籤合併成功" });

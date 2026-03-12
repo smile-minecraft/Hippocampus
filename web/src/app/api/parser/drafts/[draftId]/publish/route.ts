@@ -32,11 +32,13 @@ export async function POST(
             return NextResponse.json({ ok: false, error: "草稿資料格式異常，無法匯入" }, { status: 400 });
         }
 
-        // Try reading body for manual overrides
-        let bodyOverrides: { year?: string | number; examType?: string } = {};
+        // Try reading body for manual overrides and draft updates
+        let bodyData: { year?: string | number; examType?: string; draftJson?: object } = {};
         try {
-            bodyOverrides = await request.json();
+            bodyData = await request.json();
         } catch { /* body may be empty */ }
+
+        const bodyOverrides = { year: bodyData.year, examType: bodyData.examType };
 
         const metadata = draftData.metadata || {};
         const yearOverride = bodyOverrides.year ? parseInt(String(bodyOverrides.year), 10) : undefined;
@@ -44,9 +46,17 @@ export async function POST(
 
         const examType = bodyOverrides.examType !== undefined ? bodyOverrides.examType : (metadata.examType || null);
 
-        // Perform transactional insertion
+        // Perform transactional insertion (save draftJson first if provided)
         const questions = draftData.questions ?? [];
         await db.$transaction(async (tx) => {
+            // 0. Update draftJson if provided (ensures latest edits are saved before publishing)
+            if (bodyData.draftJson && Array.isArray((bodyData.draftJson as any).questions)) {
+                await tx.parsedDraft.update({
+                    where: { id: draftId },
+                    data: { draftJson: bodyData.draftJson },
+                });
+            }
+
             for (const q of questions) {
                 // 1. Insert question
                 const newQuestion = await tx.question.create({

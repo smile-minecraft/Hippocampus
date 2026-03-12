@@ -167,7 +167,7 @@ describe('protected routes without token', () => {
         const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(401)
-        expect((lastJsonArgs?.body as { error: { code: string } }).error.code).toBe('UNAUTHORIZED')
+        expect((lastJsonArgs?.body as { ok: false; code: string }).code).toBe('UNAUTHORIZED')
     })
 })
 
@@ -262,7 +262,7 @@ describe('CSRF validation', () => {
         const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(403)
-        expect((lastJsonArgs?.body as { error: { code: string } }).error.code).toBe('FORBIDDEN')
+        expect((lastJsonArgs?.body as { ok: false; code: string }).code).toBe('FORBIDDEN')
     })
 
     it('blocks POST when CSRF header is missing', async () => {
@@ -334,7 +334,7 @@ describe('token errors', () => {
         const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(401)
-        expect((lastJsonArgs?.body as { error: { message: string } }).error.message).toContain('過期')
+        expect((lastJsonArgs?.body as { ok: false; message: string }).message).toContain('過期')
     })
 
     it('returns 401 with generic message for invalid token', async () => {
@@ -347,7 +347,7 @@ describe('token errors', () => {
         const res = await proxy(req as never)
 
         expect((res as { status: number }).status).toBe(401)
-        expect((lastJsonArgs?.body as { error: { message: string } }).error.message).toContain('無效')
+        expect((lastJsonArgs?.body as { ok: false; message: string }).message).toContain('無效')
     })
 
     it('detects expired token via error message containing "exp"', async () => {
@@ -359,6 +359,6 @@ describe('token errors', () => {
         })
         const res = await proxy(req as never)
 
-        expect((lastJsonArgs?.body as { error: { message: string } }).error.message).toContain('過期')
+        expect((lastJsonArgs?.body as { ok: false; message: string }).message).toContain('過期')
     })
 })

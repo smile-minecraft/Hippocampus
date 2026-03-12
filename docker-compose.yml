@@ -125,7 +125,7 @@ services:
       - hippocampus-net
 
   # ---------------------------------------------------------------------------
-  # BullMQ Worker Node
+  # BullMQ Worker Node — Document Parser
   # ---------------------------------------------------------------------------
   worker:
     build:
@@ -137,13 +137,32 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-hippocampus}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-hippocampus}?schema=public
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
-    command: "npm run worker"
+    command: "npm run worker:parser"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+    networks:
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # BullMQ Worker Node — AI Explanation Generator
+  # ---------------------------------------------------------------------------
+  explanation-worker:
+    build:
+      context: ./web
+    container_name: hippocampus-explanation-worker
+    restart: unless-stopped
+    env_file: ./web/.env.example
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hippocampus}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-hippocampus}?schema=public
+      - REDIS_URL=redis://redis:6379
+    command: "npm run worker:explanation"
+    depends_on:
+      redis:
         condition: service_healthy
     networks:
       - hippocampus-net

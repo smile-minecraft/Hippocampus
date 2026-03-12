@@ -62,8 +62,10 @@ function errorResponse(
     code: string,
     status: number
 ): NextResponse {
+    // Use the same { ok, code, message } envelope as Res (api-response.ts)
+    // so fetchApi can extract the error message consistently.
     return NextResponse.json(
-        { success: false, error: { code, message } },
+        { ok: false, code, message },
         { status }
     );
 }

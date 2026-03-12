@@ -1,15 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { log } from '@/lib/logger'
 import { cn } from '@/lib/cn'
 import { LatexText } from '@/components/ui/LatexText'
-
-function getCsrfToken(): string {
-    if (typeof document === 'undefined') return ''
-    const match = document.cookie.match(/(?:^|;\s*)__csrf_token=([^;]+)/)
-    return match ? match[1] : ''
-}
+import { fetchApi, ApiClientError } from '@/lib/apiClient'
 import {
     AlertCircle,
     Loader2,
@@ -129,42 +124,39 @@ export function AuditWorkstation() {
     // Explanation generation state
     const [generatingExplanations, setGeneratingExplanations] = useState(false)
     const [generatingExplanationIdx, setGeneratingExplanationIdx] = useState<number | null>(null)
+    const [explanationProgress, setExplanationProgress] = useState<{ done: number; total: number; cached?: number; message?: string } | null>(null)
+    const [explanationJobId, setExplanationJobId] = useState<string | null>(null)
+    const [explanationModel, setExplanationModel] = useState<'fast' | 'precise'>('fast')
+    const [explanationPaused, setExplanationPaused] = useState(false)
+    const [explanationCancelling, setExplanationCancelling] = useState(false)
+    const explanationPollRef = useRef(false) // used to cancel polling on unmount
+
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => { explanationPollRef.current = true }
+    }, [])
 
     const fetchDrafts = useCallback(async () => {
         setLoading(true)
         setError(null)
         try {
-            const res = await fetch(`/api/parser/drafts?limit=50&status=${statusFilter}`, {
-                credentials: 'include',
-            })
-            const data = await res.json()
-
-            // Middleware 401 returns { success: false, error: { code, message } }
-            if (!res.ok && data?.success === false) {
-                const errObj = data.error
-                const msg = typeof errObj === 'object' && errObj?.message
-                    ? String(errObj.message)
-                    : typeof errObj === 'string' ? errObj : `HTTP ${res.status}`
-                setError(msg)
-                return
-            }
-
-            if (data.ok && Array.isArray(data.data)) {
-                setDrafts(data.data)
-                // Auto-select first draft if current selection is gone
-                if (data.data.length > 0) {
-                    const ids = new Set(data.data.map((d: ParsedDraft) => d.id))
-                    if (!activeDraftId || !ids.has(activeDraftId)) {
-                        setActiveDraftId(data.data[0].id)
-                    }
-                } else {
-                    setActiveDraftId(null)
+            const data = await fetchApi<ParsedDraft[]>(`/api/parser/drafts?limit=50&status=${statusFilter}`)
+            setDrafts(data)
+            // Auto-select first draft if current selection is gone
+            if (data.length > 0) {
+                const ids = new Set(data.map((d) => d.id))
+                if (!activeDraftId || !ids.has(activeDraftId)) {
+                    setActiveDraftId(data[0].id)
                 }
             } else {
-                setError(typeof data.error === 'string' ? data.error : '無法載入草稿資料')
+                setActiveDraftId(null)
             }
-        } catch {
-            setError('API 連線失敗')
+        } catch (err) {
+            if (err instanceof ApiClientError) {
+                setError(err.message)
+            } else {
+                setError('API 連線失敗')
+            }
         } finally {
             setLoading(false)
             setSelectedDraftIds(new Set())
@@ -236,49 +228,208 @@ export function AuditWorkstation() {
     }
 
     // ---------------------------------------------------------------------------
-    // Explanation Generation
+    // Explanation Generation (Worker-based with polling)
     // ---------------------------------------------------------------------------
     const generateExplanationsForAll = async () => {
         if (!activeDraft || questions.length === 0) return
         setGeneratingExplanations(true)
         setSaveMsg(null)
+        setExplanationProgress({ done: 0, total: questions.length, message: '正在提交任務...' })
+
         try {
-            const res = await fetch('/api/llm/generate-explanations', {
+            // 1. Enqueue the job
+            const enqueueResult = await fetchApi<{ jobId: string }>('/api/llm/generate-explanations/enqueue', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-csrf-token': getCsrfToken(),
-                },
-                credentials: 'include',
                 body: JSON.stringify({
-                    questions: questions.map(q => ({
+                    draftId: activeDraft.id,
+                    model: explanationModel,
+                    questions: questions.map((q, i) => ({
+                        index: i,
                         stem: q.stem,
                         options: q.options,
                         answer: q.answer,
                     })),
                 }),
             })
-            const data = await res.json()
-            if (data.ok && Array.isArray(data.data?.explanations)) {
-                const explanations = data.data.explanations as string[]
-                setDrafts(prev => prev.map(d => {
-                    if (d.id !== activeDraftId) return d
-                    const newQ = d.draftJson.questions.map((q, i) => ({
-                        ...q,
-                        explanation: explanations[i] || q.explanation || '',
-                    }))
-                    return { ...d, draftJson: { ...d.draftJson, questions: newQ } }
-                }))
-                setSaveMsg(`已為 ${explanations.filter(e => e).length} 題生成詳解`)
-                setTimeout(() => setSaveMsg(null), 5000)
-            } else {
-                setSaveMsg(`生成詳解失敗: ${data.message || '未知錯誤'}`)
+
+            const jobId = enqueueResult.jobId
+            setExplanationJobId(jobId)
+            setExplanationProgress({ done: 0, total: questions.length, message: '任務已提交，等待處理...' })
+
+            // 2. Poll for status
+            const POLL_INTERVAL = 2000
+            const MAX_POLLS = 900 // 30 minutes max
+            let pollCount = 0
+
+            const poll = async (): Promise<void> => {
+                if (explanationPollRef.current) return // cancelled
+                pollCount++
+                if (pollCount > MAX_POLLS) {
+                    setSaveMsg('解釋生成任務超時，請稍後查看結果')
+                    setGeneratingExplanations(false)
+                    setExplanationProgress(null)
+                    setExplanationJobId(null)
+                    return
+                }
+
+                try {
+                    const status = await fetchApi<{
+                        jobId: string
+                        state: string
+                        progress: { done: number; total: number; cached?: number; partialResults?: Record<string, string>; message?: string } | null
+                        result?: { explanations: Record<string, string> }
+                        errorReason?: string
+                    }>(`/api/llm/generate-explanations/status/${jobId}`)
+
+                    if (status.state === 'completed') {
+                        // Apply all results to state
+                        const results = status.result?.explanations ?? {}
+                        setDrafts(prev => prev.map(d => {
+                            if (d.id !== activeDraftId) return d
+                            const newQ = d.draftJson.questions.map((q, i) => ({
+                                ...q,
+                                explanation: results[String(i)] || q.explanation || '',
+                            }))
+                            return { ...d, draftJson: { ...d.draftJson, questions: newQ } }
+                        }))
+
+                        const generatedCount = Object.values(results).filter(e => e).length
+                        const cachedCount = status.progress?.cached ?? 0
+                        const cacheNote = cachedCount > 0 ? `（快取 ${cachedCount} 題）` : ''
+                        setSaveMsg(`已為 ${generatedCount} 題生成詳解${cacheNote}`)
+                        setTimeout(() => setSaveMsg(null), 5000)
+
+                        setGeneratingExplanations(false)
+                        setExplanationProgress(null)
+                        setExplanationJobId(null)
+                        setExplanationPaused(false)
+                        return
+                    }
+
+                    if (status.state === 'failed') {
+                        const reason = status.errorReason || '未知錯誤'
+                        setSaveMsg(`詳解生成失敗: ${reason.slice(0, 100)}`)
+                        setTimeout(() => setSaveMsg(null), 5000)
+
+                        // Still apply any partial results
+                        const partialResults = status.progress?.partialResults ?? {}
+                        if (Object.keys(partialResults).length > 0) {
+                            setDrafts(prev => prev.map(d => {
+                                if (d.id !== activeDraftId) return d
+                                const newQ = d.draftJson.questions.map((q, i) => ({
+                                    ...q,
+                                    explanation: partialResults[String(i)] || q.explanation || '',
+                                }))
+                                return { ...d, draftJson: { ...d.draftJson, questions: newQ } }
+                            }))
+                        }
+
+                        setGeneratingExplanations(false)
+                        setExplanationProgress(null)
+                        setExplanationJobId(null)
+                        setExplanationPaused(false)
+                        return
+                    }
+
+                    // Still in progress — update UI
+                    if (status.progress && typeof status.progress === 'object' && 'done' in status.progress) {
+                        setExplanationProgress({
+                            done: status.progress.done,
+                            total: status.progress.total,
+                            cached: status.progress.cached,
+                            message: status.progress.message,
+                        })
+                    }
+
+                    // Check if job is paused via message
+                    if (status.progress?.message?.includes('暫停')) {
+                        setExplanationPaused(true)
+                    } else if (explanationPaused && !status.progress?.message?.includes('暫停')) {
+                        setExplanationPaused(false)
+                    }
+
+                    // Continue polling
+                    setTimeout(poll, POLL_INTERVAL)
+                } catch {
+                    // Polling error — retry
+                    setTimeout(poll, POLL_INTERVAL * 2)
+                }
             }
-        } catch (err) {
-            log.error('audit', 'Batch generate explanations failed', { error: err instanceof Error ? err.message : String(err) })
-            setSaveMsg('生成詳解失敗')
-        } finally {
+
+            // Start polling after a brief delay
+            setTimeout(poll, POLL_INTERVAL)
+        } catch (err: unknown) {
+            const msg = (err as any)?.message || '未知錯誤'
+            log.error('audit', 'Failed to enqueue explanation generation', { detail: msg })
+            setSaveMsg(`提交詳解生成任務失敗: ${msg}`)
+            setTimeout(() => setSaveMsg(null), 5000)
             setGeneratingExplanations(false)
+            setExplanationProgress(null)
+        }
+    }
+
+    // Pause/Resume explanation generation
+    const pauseExplanationGeneration = async () => {
+        if (!explanationJobId) return
+        try {
+            await fetchApi(`/api/llm/generate-explanations/pause/${explanationJobId}`, {
+                method: 'POST',
+            })
+            setExplanationPaused(true)
+            setSaveMsg('詳解生成已暫停')
+            setTimeout(() => setSaveMsg(null), 3000)
+        } catch (err: unknown) {
+            const msg = err instanceof ApiClientError ? err.message : '暫停失敗'
+            setSaveMsg(`暫停失敗: ${msg}`)
+            setTimeout(() => setSaveMsg(null), 3000)
+        }
+    }
+
+    const resumeExplanationGeneration = async () => {
+        if (!explanationJobId) return
+        try {
+            await fetchApi(`/api/llm/generate-explanations/pause/${explanationJobId}`, {
+                method: 'DELETE',
+            })
+            setExplanationPaused(false)
+            setSaveMsg('詳解生成已恢復')
+            setTimeout(() => setSaveMsg(null), 3000)
+        } catch (err: unknown) {
+            const msg = err instanceof ApiClientError ? err.message : '恢復失敗'
+            setSaveMsg(`恢復失敗: ${msg}`)
+            setTimeout(() => setSaveMsg(null), 3000)
+        }
+    }
+
+    // Cancel explanation generation
+    const cancelExplanationGeneration = async () => {
+        if (!explanationJobId) return
+        if (!confirm('確定要取消詳解生成嗎？已生成的部分結果仍會保留。')) return
+
+        setExplanationCancelling(true)
+        try {
+            await fetchApi(`/api/llm/generate-explanations/cancel/${explanationJobId}`, {
+                method: 'DELETE',
+            })
+            
+            // Stop polling
+            explanationPollRef.current = true
+            
+            setSaveMsg('詳解生成已取消')
+            setTimeout(() => setSaveMsg(null), 3000)
+            
+            setGeneratingExplanations(false)
+            setExplanationProgress(null)
+            setExplanationJobId(null)
+            setExplanationPaused(false)
+        } catch (err: unknown) {
+            const msg = err instanceof ApiClientError ? err.message : '取消失敗'
+            setSaveMsg(`取消失敗: ${msg}`)
+            setTimeout(() => setSaveMsg(null), 3000)
+        } finally {
+            setExplanationCancelling(false)
+            // Reset the poll ref after a delay to allow future jobs
+            setTimeout(() => { explanationPollRef.current = false }, 1000)
         }
     }
 
@@ -287,27 +438,19 @@ export function AuditWorkstation() {
         if (!q) return
         setGeneratingExplanationIdx(index)
         try {
-            const res = await fetch('/api/llm/generate-explanations', {
+            const result = await fetchApi<{ explanations: string[] }>('/api/llm/generate-explanations', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-csrf-token': getCsrfToken(),
-                },
-                credentials: 'include',
                 body: JSON.stringify({
                     questions: [{ stem: q.stem, options: q.options, answer: q.answer }],
                 }),
             })
-            const data = await res.json()
-            if (data.ok && Array.isArray(data.data?.explanations) && data.data.explanations[0]) {
-                updateQuestion(index, { explanation: data.data.explanations[0] })
-            } else {
-                setSaveMsg(`生成詳解失敗: ${data.message || '未知錯誤'}`)
-                setTimeout(() => setSaveMsg(null), 3000)
+            if (result.explanations[0]) {
+                updateQuestion(index, { explanation: result.explanations[0] })
             }
-        } catch (err) {
-            log.error('audit', 'Single generate explanation failed', { error: err instanceof Error ? err.message : String(err) })
-            setSaveMsg('生成詳解失敗')
+        } catch (err: unknown) {
+            const msg = (err as any)?.message || '未知錯誤'
+            log.error('audit', 'Single generate explanation failed', { detail: msg })
+            setSaveMsg(`生成詳解失敗: ${msg}`)
             setTimeout(() => setSaveMsg(null), 3000)
         } finally {
             setGeneratingExplanationIdx(null)
@@ -322,25 +465,20 @@ export function AuditWorkstation() {
         setSaving(true)
         setSaveMsg(null)
         try {
-            const res = await fetch('/api/parser/drafts', {
+            await fetchApi('/api/parser/drafts', {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     draftId: activeDraft.id,
                     draftJson: activeDraft.draftJson,
                 }),
             })
-            const data = await res.json()
-            if (data.ok) {
-                setSaveMsg('已儲存')
-                setEditingQ(null)
-                setTimeout(() => setSaveMsg(null), 3000)
-            } else {
-                setSaveMsg(`儲存失敗: ${data.error}`)
-            }
+            setSaveMsg('已儲存')
+            setEditingQ(null)
+            setTimeout(() => setSaveMsg(null), 3000)
         } catch (err) {
+            const msg = err instanceof ApiClientError ? err.message : '儲存失敗'
             log.error('audit', 'Save draft failed', { error: err instanceof Error ? err.message : String(err) })
-            setSaveMsg('儲存失敗')
+            setSaveMsg(`儲存失敗: ${msg}`)
         } finally {
             setSaving(false)
         }
@@ -348,38 +486,39 @@ export function AuditWorkstation() {
 
     const publishDraft = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!activeDraftId) return
+        if (!activeDraftId || !activeDraft) return
 
         setPublishing(true)
         setSaveMsg(null)
         try {
-            const res = await fetch(`/api/parser/drafts/${activeDraftId}/publish`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-csrf-token': getCsrfToken(),
-                },
+            // Step 1: Save latest draft changes before publishing
+            setSaveMsg('正在儲存最新修改...')
+            await fetchApi('/api/parser/drafts', {
+                method: 'PATCH',
                 body: JSON.stringify({
-                    year: importYear ? parseInt(importYear, 10) : undefined,
-                    examType: importExamType || undefined
-                })
+                    draftId: activeDraft.id,
+                    draftJson: activeDraft.draftJson,
+                }),
             })
 
-            const text = await res.text()
-            let data: Record<string, unknown> | undefined;
-            try { data = JSON.parse(text) } catch { /* ignore */ }
-
-            if (!res.ok || (data && !data.ok)) {
-                throw new Error((data && data.error) ? String(data.error) : `HTTP ${res.status}`)
-            }
+            // Step 2: Publish with the saved draftJson
+            setSaveMsg('正在匯入題庫...')
+            await fetchApi(`/api/parser/drafts/${activeDraftId}/publish`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    year: importYear ? parseInt(importYear, 10) : undefined,
+                    examType: importExamType || undefined,
+                    draftJson: activeDraft.draftJson,
+                })
+            })
 
             setSaveMsg('匯入題庫成功')
             setIsImportModalOpen(false)
             removeDraftFromView(activeDraftId)
 
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : '未知錯誤';
+            const message = err instanceof ApiClientError ? err.message
+                : err instanceof Error ? err.message : '未知錯誤'
             log.error('audit', 'Publish draft failed', { error: err instanceof Error ? err.message : String(err) })
             setSaveMsg(`匯入失敗: ${message}`)
         } finally {
@@ -393,15 +532,13 @@ export function AuditWorkstation() {
 
         setDeleting(true)
         try {
-            const res = await fetch(`/api/parser/drafts/${activeDraftId}`, {
+            await fetchApi(`/api/parser/drafts/${activeDraftId}`, {
                 method: 'DELETE',
-                credentials: 'include',
-                headers: { 'x-csrf-token': getCsrfToken() },
             })
-            if (!res.ok) throw new Error('刪除失敗')
             removeDraftFromView(activeDraftId)
-        } catch (_err) {
-            alert('刪除草稿失敗')
+        } catch (err) {
+            const msg = err instanceof ApiClientError ? err.message : '刪除草稿失敗'
+            alert(msg)
         } finally {
             setDeleting(false)
         }
@@ -411,40 +548,31 @@ export function AuditWorkstation() {
         if (!rejectingDraftId) return
         setRejecting(true)
         try {
-            const res = await fetch('/api/parser/drafts', {
+            await fetchApi('/api/parser/drafts', {
                 method: 'PATCH',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-csrf-token': getCsrfToken(),
-                },
                 body: JSON.stringify({
                     draftId: rejectingDraftId,
                     status: 'REJECTED',
                     errorLog: rejectReason || '審核員手動退回',
                 }),
             })
-            const data = await res.json()
-            if (data.ok) {
-                setSaveMsg('已退回草稿')
-                setTimeout(() => setSaveMsg(null), 3000)
-                setRejectingDraftId(null)
-                setRejectReason('')
-                // Remove from current view if not viewing ALL or REJECTED
-                if (statusFilter !== 'ALL' && statusFilter !== 'REJECTED') {
-                    removeDraftFromView(rejectingDraftId)
-                } else {
-                    // Update the status in-place
-                    setDrafts(prev => prev.map(d =>
-                        d.id === rejectingDraftId ? { ...d, status: 'REJECTED', errorLog: rejectReason || '審核員手動退回' } : d
-                    ))
-                }
+            setSaveMsg('已退回草稿')
+            setTimeout(() => setSaveMsg(null), 3000)
+            setRejectingDraftId(null)
+            setRejectReason('')
+            // Remove from current view if not viewing ALL or REJECTED
+            if (statusFilter !== 'ALL' && statusFilter !== 'REJECTED') {
+                removeDraftFromView(rejectingDraftId)
             } else {
-                setSaveMsg(`退回失敗: ${data.error}`)
+                // Update the status in-place
+                setDrafts(prev => prev.map(d =>
+                    d.id === rejectingDraftId ? { ...d, status: 'REJECTED', errorLog: rejectReason || '審核員手動退回' } : d
+                ))
             }
         } catch (err) {
+            const msg = err instanceof ApiClientError ? err.message : '退回失敗'
             log.error('audit', 'Reject draft failed', { error: err instanceof Error ? err.message : String(err) })
-            setSaveMsg('退回失敗')
+            setSaveMsg(`退回失敗: ${msg}`)
         } finally {
             setRejecting(false)
         }
@@ -481,20 +609,11 @@ export function AuditWorkstation() {
 
         for (const draftId of selectedDraftIds) {
             try {
-                const res = await fetch(`/api/parser/drafts/${draftId}/publish`, {
+                await fetchApi(`/api/parser/drafts/${draftId}/publish`, {
                     method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-csrf-token': getCsrfToken(),
-                    },
                     body: JSON.stringify({})
                 })
-                if (res.ok) {
-                    successCount++
-                } else {
-                    failCount++
-                }
+                successCount++
             } catch {
                 failCount++
             }
@@ -517,16 +636,10 @@ export function AuditWorkstation() {
 
         for (const draftId of selectedDraftIds) {
             try {
-                const res = await fetch(`/api/parser/drafts/${draftId}`, {
+                await fetchApi(`/api/parser/drafts/${draftId}`, {
                     method: 'DELETE',
-                    credentials: 'include',
-                    headers: { 'x-csrf-token': getCsrfToken() },
                 })
-                if (res.ok) {
-                    successCount++
-                } else {
-                    failCount++
-                }
+                successCount++
             } catch {
                 failCount++
             }
@@ -745,14 +858,72 @@ export function AuditWorkstation() {
                             </button>
                         )}
                         {!isReadOnly && questions.length > 0 && (
-                            <button
-                                onClick={generateExplanationsForAll}
-                                disabled={generatingExplanations || saving}
-                                className="btn-secondary !px-5 !py-2.5 text-sm gap-2 !text-violet-500 !border-violet-500/30 hover:!bg-violet-500/10"
-                            >
-                                {generatingExplanations ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                                AI 批次生成詳解
-                            </button>
+                            <>
+                                <select
+                                    value={explanationModel}
+                                    onChange={(e) => setExplanationModel(e.target.value as 'fast' | 'precise')}
+                                    disabled={generatingExplanations}
+                                    className="px-2 py-1.5 text-xs rounded-md border border-border-base bg-bg-base text-text-primary focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                                    title="選擇 AI 模型"
+                                >
+                                    <option value="fast">快速模式</option>
+                                    <option value="precise">精準模式</option>
+                                </select>
+                                <button
+                                    onClick={generateExplanationsForAll}
+                                    disabled={generatingExplanations || saving}
+                                    className="btn-secondary !px-5 !py-2.5 text-sm gap-2 !text-violet-500 !border-violet-500/30 hover:!bg-violet-500/10"
+                                >
+                                    {generatingExplanations ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                                    AI 批次生成詳解
+                                </button>
+                            </>
+                        )}
+                        {explanationProgress && (
+                            <div className="w-full max-w-[240px] space-y-2">
+                                <div className="h-2 rounded-full bg-violet-500/15 overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-violet-500 transition-all duration-300 ease-out"
+                                        style={{ width: `${Math.round((explanationProgress.done / explanationProgress.total) * 100)}%` }}
+                                    />
+                                </div>
+                                <p className="text-[11px] text-violet-400 text-center tabular-nums">
+                                    {explanationProgress.done}/{explanationProgress.total} 題
+                                    {explanationProgress.cached ? ` (快取 ${explanationProgress.cached})` : ''}
+                                </p>
+                                {explanationProgress.message && (
+                                    <p className="text-[10px] text-text-muted text-center truncate" title={explanationProgress.message}>
+                                        {explanationProgress.message}
+                                    </p>
+                                )}
+                                {/* Control buttons */}
+                                <div className="flex justify-center gap-2 pt-1">
+                                    {explanationPaused ? (
+                                        <button
+                                            onClick={resumeExplanationGeneration}
+                                            disabled={explanationCancelling}
+                                            className="btn-primary !px-3 !py-1 text-xs bg-emerald-600 hover:bg-emerald-500"
+                                        >
+                                            繼續
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={pauseExplanationGeneration}
+                                            disabled={explanationCancelling}
+                                            className="btn-secondary !px-3 !py-1 text-xs"
+                                        >
+                                            暫停
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={cancelExplanationGeneration}
+                                        disabled={explanationCancelling}
+                                        className="btn-secondary !px-3 !py-1 text-xs !bg-red-500/10 !text-red-500 hover:!bg-red-500/20 border-red-500/20"
+                                    >
+                                        {explanationCancelling ? <Loader2 className="size-3 animate-spin" /> : '取消'}
+                                    </button>
+                                </div>
+                            </div>
                         )}
                         {saveMsg && (
                             <span className="text-xs text-text-muted text-center max-w-[120px] truncate">{saveMsg}</span>

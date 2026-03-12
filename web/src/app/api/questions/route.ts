@@ -92,7 +92,7 @@ export async function GET(request: NextRequest): Promise<Response> {
                 answer: true,
                 difficulty: true,
                 imageUrls: true,
-                tags: { select: { tag: { select: { id: true, name: true, slug: true } } } },
+                tags: { select: { tag: { select: { id: true, name: true, slug: true, dimension: true, groupName: true } } } },
             },
             orderBy: { createdAt: "desc" },
             skip: (page - 1) * limit,

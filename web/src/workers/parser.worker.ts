@@ -90,7 +90,7 @@ async function reportProgress(
     await job.updateProgress({ percent, message });
 
     // 2. Update TUI store (ink renders the progress bar)
-    upsertJob(job.id!, { percent, message });
+    upsertJob(job.id!, "parser", { percent, message });
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
     const tmpDir = path.join(tmpdir(), `parser-${traceId}`);
 
     // Register this job in the TUI store so the progress table shows it
-    upsertJob(job.id!, {
+    upsertJob(job.id!, "parser", {
         filename: originalFilename ?? s3Key,
         percent: 0,
         message: "Starting...",
@@ -152,6 +152,7 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
 
         // --- Process each batch sequentially ---
         const batchResults: { data: ExtractionResponse; meta: LLMMeta }[] = [];
+        let completedBatches = 0;
 
         for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
             const batch = batches[batchIdx];
@@ -199,6 +200,11 @@ async function processParseJob(job: Job<ParseDocumentJobData>): Promise<void> {
             );
 
             batchResults.push(batchResult);
+            completedBatches++;
+
+            // Report batch completion progress
+            const batchProgressPercent = 65 + Math.round((completedBatches / totalBatches) * 20);
+            await reportProgress(job, batchProgressPercent, `已完成 ${completedBatches}/${totalBatches} 批次，本批次萃取 ${batchResult.data.questions.length} 道題目`);
 
             log.info('parser-worker', `${batchLabel} completed: ${batchResult.data.questions.length} questions extracted`, {
                 traceId,
@@ -619,7 +625,7 @@ async function pollQueueCounts(): Promise<void> {
         const counts = await parserQueue.getJobCounts(
             "waiting", "active", "completed", "failed", "delayed"
         );
-        setQueueCounts({
+        setQueueCounts("parser", {
             waiting: counts.waiting ?? 0,
             active: counts.active ?? 0,
             completed: counts.completed ?? 0,
@@ -631,33 +637,28 @@ async function pollQueueCounts(): Promise<void> {
     }
 }
 
-const queuePollTimer = setInterval(pollQueueCounts, QUEUE_POLL_INTERVAL_MS);
-// Fire immediately so the TUI has data on first render
-void pollQueueCounts();
+let queuePollTimer: NodeJS.Timeout | undefined;
 
-// 6. Start ink TUI render
-async function startTui(): Promise<void> {
-    const React = await import("react");
-    const { render } = await import("ink");
-    const { default: App } = await import("./tui/App.js");
-
-    render(React.createElement(App));
+// 6. Init function to start queue polling (called by orchestrator)
+export function startParserPolling() {
+    if (!queuePollTimer) {
+        queuePollTimer = setInterval(pollQueueCounts, QUEUE_POLL_INTERVAL_MS);
+        void pollQueueCounts();
+    }
 }
-
-void startTui();
 
 // ---------------------------------------------------------------------------
 // Graceful shutdown
 // ---------------------------------------------------------------------------
 let isShuttingDown = false;
 
-async function gracefulShutdown(signal: NodeJS.Signals) {
+export async function shutdownParser(signal: string) {
     if (isShuttingDown) return;
     isShuttingDown = true;
     log.info('parser-worker', `[${signal}] Initiating graceful shutdown... pausing worker.`);
 
     // 1. Stop queue polling
-    clearInterval(queuePollTimer);
+    if (queuePollTimer) clearInterval(queuePollTimer);
 
     // 2. Pause worker to stop picking up new jobs
     await worker.pause(true);
@@ -673,9 +674,6 @@ async function gracefulShutdown(signal: NodeJS.Signals) {
 
         // Broad cleanup of tmp directory contents
         await rm(path.join(tmpdir(), "parser-*"), { force: true, recursive: true }).catch(() => { /* best-effort cleanup */ });
-
-        log.warn('parser-worker', `[${signal}] Grace period expired. Exiting (code 1).`);
-        process.exit(1);
     }, GRACEFUL_TIMEOUT_MS);
 
     try {
@@ -685,22 +683,14 @@ async function gracefulShutdown(signal: NodeJS.Signals) {
         // 5. Close the queue polling connection
         await parserQueue.close();
 
-        // 6. Safely disconnect Prisma
-        await db.$disconnect();
-
         clearTimeout(timeoutTimer);
-        log.info('parser-worker', `[${signal}] Graceful shutdown complete. Exiting cleanly (code 0).`);
-        process.exit(0);
+        log.info('parser-worker', `[${signal}] Graceful shutdown complete.`);
     } catch (err) {
         log.error('parser-worker', `[${signal}] Error during shutdown operations`, { error: err instanceof Error ? err.message : String(err) });
-        process.exit(1);
     }
 }
 
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-
-log.info('parser-worker', 'Worker started', {
+log.info('parser-worker', 'Worker loaded', {
     concurrency: WORKER_CONCURRENCY,
     lockDuration: LOCK_DURATION_MS,
 });

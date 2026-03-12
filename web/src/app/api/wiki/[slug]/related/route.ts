@@ -83,6 +83,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
                             name: true,
                             slug: true,
                             dimension: true,
+                            groupName: true,
                         },
                     },
                 },
@@ -92,13 +93,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams): Promi
         take: 50,
     })
 
-    // Flatten the tag join structure to match the Question type
+    // Flatten the tag join structure to match the Tag type
     const formatted = questions.map((q: typeof questions[number]) => ({
         ...q,
-        tags: q.tags.map((qt: typeof q.tags[number]) => ({
-            ...qt.tag,
-            category: qt.tag.dimension,
-        })),
+        tags: q.tags.map((qt: typeof q.tags[number]) => qt.tag),
         createdAt: q.createdAt.toISOString(),
         updatedAt: q.updatedAt.toISOString(),
     }))

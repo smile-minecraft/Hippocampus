@@ -5,27 +5,9 @@
  */
 
 import { NextRequest } from "next/server";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { Res } from "@/lib/api-response";
-
-const UpdateQuestionSchema = z.object({
-    stem: z.string().min(1).max(10000).optional(),
-    options: z
-        .object({
-            A: z.string().min(1),
-            B: z.string().min(1),
-            C: z.string().min(1),
-            D: z.string().min(1),
-        })
-        .strict()
-        .optional(),
-    answer: z.enum(["A", "B", "C", "D"]).optional(),
-    explanation: z.string().max(20000).optional(),
-    imageUrls: z.array(z.string().url()).max(10).optional(),
-    difficulty: z.number().int().min(1).max(5).optional(),
-    wikiArticleId: z.string().uuid().nullable().optional(),
-}).strict();
+import { UpdateQuestionSchema } from "@/lib/schemas";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -75,13 +57,29 @@ export async function PUT(
         return Res.badRequest("請至少提供一個要更新的欄位");
     }
 
-    const updated = await db.question.update({
-        where: { id },
-        data: parsed.data,
-        select: { id: true, stem: true, updatedAt: true },
+    const { tagIds, ...questionData } = parsed.data;
+
+    const updated = await db.$transaction(async (tx) => {
+        // Update question scalar fields (if any provided)
+        const q = Object.keys(questionData).length > 0
+            ? await tx.question.update({ where: { id }, data: questionData })
+            : await tx.question.findUniqueOrThrow({ where: { id } });
+
+        // Replace tags if tagIds was explicitly provided
+        if (tagIds !== undefined) {
+            await tx.questionTag.deleteMany({ where: { questionId: id } });
+            if (tagIds.length > 0) {
+                await tx.questionTag.createMany({
+                    data: tagIds.map((tagId) => ({ questionId: id, tagId })),
+                    skipDuplicates: true,
+                });
+            }
+        }
+
+        return q;
     });
 
-    return Res.ok(updated);
+    return Res.ok({ id: updated.id, stem: updated.stem, updatedAt: updated.updatedAt });
 }
 
 // ─── DELETE (soft) ────────────────────────────────────────────────────────────

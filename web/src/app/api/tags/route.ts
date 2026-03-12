@@ -18,7 +18,8 @@ export async function GET(): Promise<Response> {
             orderBy: [{ name: "asc" }],
         });
 
-        // Group by dimension for frontend convenience
+        // Initialize all dimensions to ensure complete grouped object
+        const allDimensions: TagDimension[] = ['ACADEMIC', 'ORGAN', 'EXAM_CATEGORY', 'META'];
         const grouped = tags.reduce<Record<TagDimension, Tag[]>>(
             (acc: Record<TagDimension, Tag[]>, tag: Tag) => {
                 const dim = tag.dimension as TagDimension;
@@ -26,7 +27,13 @@ export async function GET(): Promise<Response> {
                 acc[dim].push(tag);
                 return acc;
             },
-            {} as Record<TagDimension, Tag[]>
+            allDimensions.reduce(
+                (acc, dim) => {
+                    acc[dim] = [];
+                    return acc;
+                },
+                {} as Record<TagDimension, Tag[]>
+            )
         );
 
         return { tags, grouped };
@@ -48,7 +55,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     try {
         const tag = await db.tag.create({ data: parsed.data });
-        await invalidateCache('tags:all');
+        await invalidateCache('tags:all', 'ai:tag-slugs-prompt');
         return Res.created(tag);
     } catch (err: unknown) {
         if (

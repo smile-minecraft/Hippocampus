@@ -4,6 +4,7 @@ import { Res } from "@/lib/api-response";
 import { CreateTagSchema } from "@/lib/schemas";
 import { type TagDimension } from "@prisma/client";
 import { log } from "@/lib/logger";
+import { invalidateCache } from "@/lib/cache";
 
 export async function GET(request: NextRequest): Promise<Response> {
     const role = request.headers.get("x-user-role");
@@ -81,12 +82,14 @@ export async function PATCH(request: NextRequest): Promise<Response> {
             where: { id },
             data: parsed.data
         });
+        await invalidateCache('tags:all', 'ai:tag-slugs-prompt');
         return Res.ok(tag);
     } catch (err: unknown) {
         const prismaError = err as { code?: string };
         if (prismaError.code === "P2002") {
             return Res.conflict("相同維度與群組下的標籤已存在，或 Slug 重複");
         }
+        log.error('admin', 'Tag update failed', { id, error: err instanceof Error ? err.message : String(err) });
         return Res.internal();
     }
 }
@@ -101,10 +104,11 @@ export async function DELETE(request: NextRequest): Promise<Response> {
     if (!id) return Res.badRequest("缺少標籤 ID");
 
     try {
-        // 因 schema 使用 onDelete: Cascade，關聯的 QuestionTag 會一併刪除
         await db.tag.delete({ where: { id } });
+        await invalidateCache('tags:all', 'ai:tag-slugs-prompt');
         return Res.ok({ message: "刪除成功" });
-    } catch {
-        return Res.internal();
+    } catch (err) {
+        log.error('admin', 'Tag deletion failed', { id, error: err instanceof Error ? err.message : String(err) });
+        return Res.internal("刪除標籤失敗");
     }
 }

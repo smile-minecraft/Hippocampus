@@ -450,6 +450,7 @@ export async function fetchAdminTags(page = 1, limit = 50, search = '', dimensio
 }
 
 export async function createAdminTag(payload: CreateTagPayload): Promise<{ data: AdminTagListResponse['data'][number] }> {
+    // POST /api/tags handles tag creation with MODERATOR+ role check and cache invalidation
     return fetchApi<{ data: AdminTagListResponse['data'][number] }>('/api/tags', { method: 'POST', body: JSON.stringify(payload) });
 }
 

@@ -16,8 +16,8 @@ export interface Tag {
     id: string
     name: string
     slug: string
-    category: string
-    dimension?: TagDimension
+    dimension: TagDimension
+    groupName: string | null
 }
 
 export interface TagsResponse {

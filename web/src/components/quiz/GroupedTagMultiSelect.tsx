@@ -20,10 +20,6 @@ const DIMENSION_LABELS: Record<TagDimension, string> = {
     META: "標籤狀態",
 };
 
-interface GroupedTag extends Tag {
-    groupName?: string;
-}
-
 export function GroupedTagMultiSelect({ selectedSlugs, onChange, className = "" }: TagFilterProps) {
     const [expandedDims, setExpandedDims] = useState<Record<string, boolean>>({
         ACADEMIC: true,
@@ -38,12 +34,9 @@ export function GroupedTagMultiSelect({ selectedSlugs, onChange, className = "" 
         staleTime: 5 * 60 * 1000,
     });
 
-    const tags: GroupedTag[] = useMemo(() => {
+    const tags: Tag[] = useMemo(() => {
         if (!tagsData) return [];
-        return tagsData.tags.map(t => ({
-            ...t,
-            groupName: t.category || undefined,
-        }));
+        return tagsData.tags;
     }, [tagsData]);
 
     // Filter tags by search query (client-side)
@@ -59,11 +52,10 @@ export function GroupedTagMultiSelect({ selectedSlugs, onChange, className = "" 
 
     // Transform filtered tags into nested structure: Record<Dimension, Record<GroupName, Tag[]>>
     const groupedTags = useMemo(() => {
-        const tree: Partial<Record<TagDimension, Record<string, GroupedTag[]>>> = {};
+        const tree: Partial<Record<TagDimension, Record<string, Tag[]>>> = {};
 
         filteredTags.forEach(tag => {
-            const dim = tag.dimension as TagDimension | undefined;
-            if (!dim) return;
+            const dim = tag.dimension;
             const group = tag.groupName || "其他";
 
             if (!tree[dim]) tree[dim] = {};
@@ -83,7 +75,7 @@ export function GroupedTagMultiSelect({ selectedSlugs, onChange, className = "" 
         }
     };
 
-    const handleToggleGroup = (groupTags: GroupedTag[]) => {
+    const handleToggleGroup = (groupTags: Tag[]) => {
         const groupSlugs = groupTags.map(t => t.slug);
         const allSelected = groupSlugs.every(s => selectedSlugs.includes(s));
 

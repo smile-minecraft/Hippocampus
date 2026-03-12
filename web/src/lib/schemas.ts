@@ -78,7 +78,10 @@ export const UpdateQuestionSchema = z.object({
     imageUrls: z.array(z.string().url()).max(10).optional(),
     difficulty: z.number().int().min(1).max(5).optional(),
     wikiArticleId: z.string().uuid().nullable().optional(),
-}).strict();
+    tagIds: z.array(z.string().uuid()).max(20).optional(),
+    year: z.number().int().min(1900).max(2100).nullable().optional(),
+    examType: z.string().max(50).nullable().optional(),
+});
 
 // ─── Quiz & Attempts ───────────────────────────────────────────────────────
 

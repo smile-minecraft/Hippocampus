@@ -18,7 +18,9 @@ function formatUptime(startedAt: number): string {
 }
 
 export default function WorkerHeader() {
-    const { workerStartedAt, concurrency, provider } = useStore(tuiStore);
+    const workerStartedAt = useStore(tuiStore, (s) => s.workerStartedAt);
+    const nextStatus = useStore(tuiStore, (s) => s.nextStatus);
+    const nextUrl = useStore(tuiStore, (s) => s.nextUrl);
     const [uptime, setUptime] = React.useState(() => formatUptime(workerStartedAt));
 
     React.useEffect(() => {
@@ -26,21 +28,20 @@ export default function WorkerHeader() {
         return () => clearInterval(timer);
     }, [workerStartedAt]);
 
+    const nextColor = nextStatus === "ready" ? "green" : nextStatus === "error" ? "red" : "yellow";
+    const nextLabel = nextStatus === "ready" ? "READY" : nextStatus === "error" ? "ERR" : nextStatus === "starting" ? "..." : "OFF";
+
     return (
         <Box borderStyle="round" borderColor="cyan" paddingX={1} justifyContent="space-between">
-            <Text bold color="cyan">
-                Hippocampus Worker
-            </Text>
             <Box gap={2}>
-                <Text>
-                    <Text dimColor>provider:</Text> <Text color="green">{provider}</Text>
-                </Text>
-                <Text>
-                    <Text dimColor>concurrency:</Text> <Text color="yellow">{concurrency}</Text>
-                </Text>
-                <Text>
-                    <Text dimColor>uptime:</Text> <Text>{uptime}</Text>
-                </Text>
+                <Text bold color="cyan">Hippocampus</Text>
+                <Text dimColor>|</Text>
+                <Text>Next: <Text color={nextColor} bold>{nextLabel}</Text></Text>
+                {nextUrl && <Text dimColor>{nextUrl}</Text>}
+            </Box>
+            <Box gap={2}>
+                <Text dimColor>uptime:</Text>
+                <Text>{uptime}</Text>
             </Box>
         </Box>
     );
