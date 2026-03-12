@@ -149,3 +149,12 @@ export async function extractQuestionsFromImages(
 
     return _cachedFn(imageDataParts, traceId, onProgress);
 }
+
+export async function extractQuestionsFromPdf(
+    pdfPath: string,
+    traceId: string,
+    onProgress?: (message: string) => void,
+): Promise<{ data: ExtractionResponse; meta: LLMMeta }> {
+    const mod = await import("./openai-compatible");
+    return mod.extractQuestionsFromPdf(pdfPath, traceId, onProgress);
+}

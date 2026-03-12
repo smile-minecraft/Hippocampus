@@ -118,6 +118,30 @@ export const CreateTagSchema = z.object({
     groupName: z.string().max(100).optional().nullable(),
 });
 
+// Schema for managing tags on a single question (add/remove by slug)
+export const ManageQuestionTagsSchema = z
+    .object({
+        add: z.array(z.string().min(1)).max(50).optional(),
+        remove: z.array(z.string().min(1)).max(50).optional(),
+    })
+    .refine((data) => data.add !== undefined || data.remove !== undefined, {
+        message: "必須提供 add 或 remove 陣列",
+    });
+
+// Schema for batch tag operations on multiple questions
+export const BatchQuestionTagsSchema = z
+    .object({
+        questionIds: z
+            .array(z.string().uuid("題目 ID 必須是有效的 UUID"))
+            .min(1, "至少需要一個題目 ID")
+            .max(100, "一次最多處理 100 個題目"),
+        add: z.array(z.string().min(1)).max(50).optional(),
+        remove: z.array(z.string().min(1)).max(50).optional(),
+    })
+    .refine((data) => (data.add?.length ?? 0) > 0 || (data.remove?.length ?? 0) > 0, {
+        message: "add 和 remove 陣列皆為空",
+    });
+
 // ─── Admin Users ───────────────────────────────────────────────────────────
 
 export const GetUsersSchema = z.object({
@@ -169,3 +193,5 @@ export type GetUsersQuery = z.infer<typeof GetUsersSchema>;
 export type PatchRolePayload = z.infer<typeof PatchRoleSchema>;
 export type PresignUploadPayload = z.infer<typeof PresignUploadSchema>;
 export type BindUploadPayload = z.infer<typeof BindUploadSchema>;
+export type ManageQuestionTagsPayload = z.infer<typeof ManageQuestionTagsSchema>;
+export type BatchQuestionTagsPayload = z.infer<typeof BatchQuestionTagsSchema>;

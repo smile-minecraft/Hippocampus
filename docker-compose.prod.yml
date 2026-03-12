@@ -1,0 +1,352 @@
+version: "3.9"
+
+# =============================================================================
+# Hippocampus — Production Infrastructure
+# Services: PostgreSQL 15 + pgvector | Redis 7 | MinIO | Web | Workers | Nginx
+# Usage: docker compose -f docker-compose.prod.yml up -d
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 15 with pgvector extension
+  # Resources: 2GB RAM, 2 cores
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: hippocampus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hippocampus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-hippocampus}
+    # No ports exposed - internal network only
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hippocampus} -d ${POSTGRES_DB:-hippocampus}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+        reservations:
+          memory: 1G
+          cpus: "1.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hippocampus-internal
+      # Keep for backward compatibility with service discovery
+      - hippocampus-net
+    # Additional PostgreSQL configuration
+    command: >
+      postgres
+      -c max_connections=100
+      -c shared_buffers=512MB
+      -c effective_cache_size=1536MB
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 — BullMQ Job Queue
+  # Resources: 512MB RAM, 0.5 cores
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: hippocampus-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy noeviction
+      --appendonly yes
+      --save 60 1000
+    # No ports exposed - internal network only
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hippocampus-internal
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # MinIO — S3-compatible Object Storage
+  # Resources: 1GB RAM, 1 core
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: hippocampus-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    # No ports exposed - internal network only
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hippocampus-internal
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # MinIO bucket init (one-shot setup container)
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest
+    container_name: hippocampus-minio-init
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+        mc mb --ignore-existing local/hippocampus-raw;
+        mc mb --ignore-existing local/hippocampus-assets;
+        mc anonymous set download local/hippocampus-assets;
+        echo 'MinIO buckets initialized.';
+      "
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hippocampus-internal
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # Next.js Web Application
+  # Resources: 1.5GB RAM, 1 core
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: ./web
+    container_name: hippocampus-web
+    restart: unless-stopped
+    # No ports exposed - accessed via Nginx reverse proxy
+    env_file: ./web/.env.example
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hippocampus}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-hippocampus}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - NODE_ENV=production
+    command: "npm run start"
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:3000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hippocampus-internal
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # BullMQ Worker Node — Document Parser
+  # Resources: 1.5GB RAM, 1.5 cores
+  # ---------------------------------------------------------------------------
+  parser-worker:
+    build:
+      context: ./web
+    container_name: hippocampus-parser-worker
+    restart: unless-stopped
+    env_file: ./web/.env.example
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hippocampus}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-hippocampus}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - NODE_ENV=production
+    command: "npm run worker:parser"
+    healthcheck:
+      # Worker health check - checks if process is running and responsive
+      test: [ "CMD-SHELL", "pgrep -f 'worker:parser' || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+          cpus: "1.5"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hippocampus-internal
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # BullMQ Worker Node — AI Explanation Generator
+  # Resources: 1GB RAM, 1 core
+  # ---------------------------------------------------------------------------
+  explanation-worker:
+    build:
+      context: ./web
+    container_name: hippocampus-explanation-worker
+    restart: unless-stopped
+    env_file: ./web/.env.example
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-hippocampus}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-hippocampus}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+    command: "npm run worker:explanation"
+    healthcheck:
+      # Worker health check - checks if process is running
+      test: [ "CMD-SHELL", "pgrep -f 'worker:explanation' || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hippocampus-internal
+      - hippocampus-net
+
+  # ---------------------------------------------------------------------------
+  # Nginx — Reverse Proxy
+  # Resources: 200MB RAM, 0.5 cores
+  # Exposes: 80, 443
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: hippocampus-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_cache:/var/cache/nginx
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      web:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+          cpus: "0.5"
+        reservations:
+          memory: 50M
+          cpus: "0.1"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - hippocampus-net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  nginx_cache:
+    driver: local
+
+networks:
+  # Internal network for service-to-service communication
+  hippocampus-internal:
+    driver: bridge
+    internal: true
+  # External network for Nginx and service discovery
+  hippocampus-net:
+    driver: bridge

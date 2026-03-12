@@ -41,6 +41,7 @@
     "mammoth": "^1.8.0",
     "minio": "^8.0.5",
     "next": "16.1.6",
+    "pdf-lib": "^1.17.1",
     "pgvector": "^0.2.1",
     "prisma-extension-pgvector": "^0.11.0",
     "react": "19.2.3",

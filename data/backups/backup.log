@@ -1,0 +1,28 @@
+[2026-03-13 00:09:42] [INFO] Starting backup process...
+[2026-03-13 00:09:42] [INFO] Running in DRY-RUN mode (no actual backups will be created)
+[2026-03-13 00:09:42] [INFO] Starting PostgreSQL backup...
+[2026-03-13 00:09:42] [INFO] [DRY-RUN] Would create backup: /Volumes/Smile-Data/MainData/Project-Nest/Hippocampus/data/backups/postgres/hippocampus-20260313-000942.sql.gz
+[2026-03-13 00:09:42] [INFO] [DRY-RUN] Command: docker exec hippocampus-postgres pg_dump -U postgres -d hippocampus --format=custom | gzip > /Volumes/Smile-Data/MainData/Project-Nest/Hippocampus/data/backups/postgres/hippocampus-20260313-000942.sql.gz
+[2026-03-13 00:09:42] [INFO] Starting MinIO backup...
+[2026-03-13 00:09:42] [INFO] [DRY-RUN] Would create backup: /Volumes/Smile-Data/MainData/Project-Nest/Hippocampus/data/backups/minio/minio-20260313-000942.tar.gz
+[2026-03-13 00:09:42] [INFO] [DRY-RUN] Command: mc mirror local/hippocampus-raw /Volumes/Smile-Data/MainData/Project-Nest/Hippocampus/data/backups/minio/.temp-20260313-000942/
+[2026-03-13 00:09:42] [INFO] [DRY-RUN] Command: tar -czf /Volumes/Smile-Data/MainData/Project-Nest/Hippocampus/data/backups/minio/minio-20260313-000942.tar.gz -C /Volumes/Smile-Data/MainData/Project-Nest/Hippocampus/data/backups/minio/.temp-20260313-000942 .
+[2026-03-13 00:09:42] [INFO] Applying retention policy...
+[2026-03-13 00:09:42] [INFO] Found        0 PostgreSQL backup(s)
+[2026-03-13 00:09:42] [INFO] [DRY-RUN] Would delete PostgreSQL backups older than 7 days
+[2026-03-13 00:09:42] [INFO] Found        0 MinIO backup(s)
+[2026-03-13 00:09:42] [INFO] [DRY-RUN] Would delete MinIO backups older than 4 weeks (28 days)
+[2026-03-13 00:09:42] [SUCCESS] Backup process completed successfully
+[2026-03-13 00:09:47] [INFO] Verifying last backup integrity...
+[2026-03-13 00:09:47] [ERROR] Backup script exited with error code 1
+[2026-03-13 00:09:48] [INFO] Starting backup process...
+[2026-03-13 00:09:48] [INFO] Running in DRY-RUN mode (no actual backups will be created)
+[2026-03-13 00:09:48] [INFO] Starting PostgreSQL backup...
+[2026-03-13 00:09:48] [INFO] [DRY-RUN] Would create backup: /Volumes/Smile-Data/MainData/Project-Nest/Hippocampus/data/backups/postgres/hippocampus-20260313-000948.sql.gz
+[2026-03-13 00:09:48] [INFO] [DRY-RUN] Command: docker exec hippocampus-postgres pg_dump -U postgres -d hippocampus --format=custom | gzip > /Volumes/Smile-Data/MainData/Project-Nest/Hippocampus/data/backups/postgres/hippocampus-20260313-000948.sql.gz
+[2026-03-13 00:09:48] [INFO] Applying retention policy...
+[2026-03-13 00:09:48] [INFO] Found        0 PostgreSQL backup(s)
+[2026-03-13 00:09:48] [INFO] [DRY-RUN] Would delete PostgreSQL backups older than 7 days
+[2026-03-13 00:09:48] [INFO] Found        0 MinIO backup(s)
+[2026-03-13 00:09:48] [INFO] [DRY-RUN] Would delete MinIO backups older than 4 weeks (28 days)
+[2026-03-13 00:09:48] [SUCCESS] Backup process completed successfully

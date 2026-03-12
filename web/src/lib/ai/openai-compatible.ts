@@ -559,3 +559,259 @@ export async function extractQuestionsFromImages(
         throw zodErr;
     }
 }
+
+// ---------------------------------------------------------------------------
+// PDF extraction via OpenAI Files API + GPT-5 Mini
+// ---------------------------------------------------------------------------
+
+interface OpenAIFileResponse {
+    id: string;
+    object: string;
+    bytes: number;
+    created_at: number;
+    filename: string;
+    purpose: string;
+}
+
+export async function uploadFileToOpenAI(
+    filePath: string,
+    traceId: string
+): Promise<string> {
+    const apiUrl = getApiUrl();
+    const apiKey = getApiKey();
+    const fileName = filePath.split("/").pop() ?? "document.pdf";
+
+    const fileBuffer = await import("node:fs/promises").then((fs) => fs.readFile(filePath));
+    const formData = new FormData();
+    formData.append("file", new Blob([fileBuffer]), fileName);
+    formData.append("purpose", "user_data");
+
+    const headers: Record<string, string> = {};
+    if (apiKey) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    oaiLog("info", traceId, "Uploading PDF to OpenAI Files API", {
+        fileName,
+        fileSize: fileBuffer.length,
+    });
+
+    const response = await fetch(`${apiUrl}/files`, {
+        method: "POST",
+        headers,
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text().catch(() => "");
+        oaiLog("error", traceId, `Files API upload failed: HTTP ${response.status}`, {
+            status: response.status,
+            body: errorBody.slice(0, 500),
+        });
+        throw new Error(`Failed to upload file to OpenAI: HTTP ${response.status}`);
+    }
+
+    const result = (await response.json()) as OpenAIFileResponse;
+    oaiLog("info", traceId, "File uploaded successfully", {
+        fileId: result.id,
+        bytes: result.bytes,
+    });
+
+    return result.id;
+}
+
+export async function extractQuestionsFromPdf(
+    pdfPath: string,
+    traceId: string,
+    onProgress?: (message: string) => void,
+): Promise<{ data: ExtractionResponse; meta: LLMMeta }> {
+    const modelName = getVisionModel();
+    const apiUrl = getApiUrl();
+
+    oaiLog("info", traceId, "Starting PDF extraction via Files API", {
+        model: modelName,
+        apiUrl,
+        pdfPath,
+    });
+    onProgress?.(`正在上傳 PDF 至 AI 服務...`);
+
+    let attemptCount = 0;
+    let lastElapsedMs = 0;
+    let lastFinishReason = "unknown";
+    let lastPromptTokens = 0;
+    let lastCandidateTokens = 0;
+    let lastResponseLength = 0;
+    let fileId: string | undefined;
+
+    const rawText = await oaiPolicy.execute(async () => {
+        attemptCount++;
+        oaiLog("info", traceId, `PDF extraction attempt ${attemptCount}`, { attempt: attemptCount });
+        onProgress?.(`正在處理 PDF (第 ${attemptCount} 次嘗試)...`);
+
+        const startTime = Date.now();
+
+        if (!fileId) {
+            fileId = await uploadFileToOpenAI(pdfPath, traceId);
+            onProgress?.(`PDF 上傳完成，正在萃取題目...`);
+        }
+
+        const systemPrompt = await buildExtractionPrompt();
+        const isReasoningModel = /^(o[134]|gpt-5)/.test(modelName);
+        const systemRole = isReasoningModel ? "developer" : "system";
+
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+        };
+        const apiKey = getApiKey();
+        if (apiKey) {
+            headers["Authorization"] = `Bearer ${apiKey}`;
+        }
+
+        const response = await fetch(`${apiUrl}/chat/completions`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                model: modelName,
+                messages: [
+                    { role: systemRole, content: systemPrompt },
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "file",
+                                file: { file_id: fileId },
+                            },
+                            {
+                                type: "text",
+                                text: "Extract ALL medical exam questions from this PDF document. Output ONLY the JSON object.",
+                            },
+                        ],
+                    },
+                ],
+                max_completion_tokens: 65536,
+            }),
+        });
+
+        const elapsedMs = Date.now() - startTime;
+
+        if (!response.ok) {
+            const errorBody = await response.text().catch(() => "");
+            oaiLog("error", traceId, `Chat API failed: HTTP ${response.status}`, {
+                status: response.status,
+                body: errorBody.slice(0, 500),
+                attempt: attemptCount,
+            });
+            throw new Error(`OpenAI Chat API returned HTTP ${response.status}: ${errorBody.slice(0, 200)}`);
+        }
+
+        const json = (await response.json()) as OAIChatResponse;
+        const text = json.choices?.[0]?.message?.content ?? "";
+
+        oaiLog("info", traceId, "PDF extraction response received", {
+            attempt: attemptCount,
+            elapsedMs,
+            responseLength: text.length,
+            finishReason: json.choices?.[0]?.finish_reason ?? "unknown",
+            promptTokens: json.usage?.prompt_tokens ?? 0,
+            completionTokens: json.usage?.completion_tokens ?? 0,
+        });
+
+        if (!text || text.trim().length === 0) {
+            const reason = json.choices?.[0]?.finish_reason ?? "NO_CONTENT";
+            oaiLog("error", traceId, "Empty response from PDF extraction", {
+                finishReason: reason,
+                attempt: attemptCount,
+            });
+            throw new Error(`PDF extraction returned empty response (finishReason=${reason}, attempt=${attemptCount})`);
+        }
+
+        lastElapsedMs = elapsedMs;
+        lastFinishReason = json.choices?.[0]?.finish_reason ?? "unknown";
+        lastPromptTokens = json.usage?.prompt_tokens ?? 0;
+        lastCandidateTokens = json.usage?.completion_tokens ?? 0;
+        lastResponseLength = text.length;
+
+        onProgress?.(`AI 回傳成功 (${elapsedMs}ms)，正在驗證資料格式...`);
+        return text;
+    });
+
+    oaiLog("info", traceId, "PDF extraction raw text received", {
+        textLength: rawText.length,
+        totalAttempts: attemptCount,
+    });
+
+    let cleanedText = rawText.trim();
+    if (cleanedText.startsWith("```")) {
+        cleanedText = cleanedText
+            .replace(/^```(?:json)?\s*\n?/, "")
+            .replace(/\n?```\s*$/, "");
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(cleanedText);
+    } catch {
+        oaiLog("error", traceId, "Non-JSON output from PDF extraction", {
+            rawOutput: cleanedText.slice(0, 500),
+        });
+        throw new Error(`PDF extraction JSON parse failure [traceId=${traceId}]`);
+    }
+
+    try {
+        if (Array.isArray(parsed)) {
+            if (parsed.length > 0 && parsed[0].questions) {
+                parsed = parsed[0];
+            } else {
+                parsed = {
+                    questions: parsed,
+                    metadata: {
+                        year: new Date().getFullYear(),
+                        examType: "自動修正",
+                        pageCount: 1,
+                    },
+                };
+            }
+        }
+
+        const validated = ExtractionResponseSchema.parse(parsed);
+        oaiLog("info", traceId, "PDF extraction validated successfully", {
+            questionCount: validated.questions.length,
+            year: validated.metadata.year,
+            examType: validated.metadata.examType,
+        });
+        onProgress?.(`成功萃取 ${validated.questions.length} 道題目`);
+
+        const meta: LLMMeta = {
+            provider: "openai",
+            model: modelName,
+            imageCount: 0,
+            totalPayloadMB: "0",
+            totalAttempts: attemptCount,
+            elapsedMs: lastElapsedMs,
+            responseLength: lastResponseLength,
+            finishReason: lastFinishReason,
+            promptTokenCount: lastPromptTokens,
+            candidatesTokenCount: lastCandidateTokens,
+            questionCount: validated.questions.length,
+            timestamp: new Date().toISOString(),
+        };
+
+        return { data: validated, meta };
+    } catch (zodErr) {
+        try {
+            const dumpPath = join(tmpdir(), `oai-pdf-error-${traceId}.json`);
+            await writeFile(dumpPath, cleanedText);
+            oaiLog("error", traceId, `Dumped raw text to ${dumpPath}`);
+        } catch (e) {
+            log.error("openai-compat", "Failed to dump raw text", {
+                error: e instanceof Error ? e.message : String(e),
+            });
+        }
+
+        oaiLog("error", traceId, "Zod validation failed on PDF extraction output", {
+            zodError: String(zodErr),
+            rawKeys: Object.keys(parsed as object),
+        });
+        throw zodErr;
+    }
+}

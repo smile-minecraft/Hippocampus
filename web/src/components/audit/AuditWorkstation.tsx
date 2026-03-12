@@ -27,6 +27,9 @@ import {
     CheckSquare,
     Square,
     Sparkles,
+    Tags,
+    Plus,
+    Minus,
 } from 'lucide-react'
 import { GroupedTagMultiSelect } from '@/components/quiz/GroupedTagMultiSelect'
 import { QuestionImageUploader } from './QuestionImageUploader'
@@ -42,6 +45,7 @@ interface ExtractedQuestion {
     imagePlaceholders?: string[]
     imageUrls?: string[]
     tagSlugs?: string[]
+    difficulty?: 1 | 2 | 3 | 4 | 5 | null
 }
 
 interface ExtractionMetadata {
@@ -107,9 +111,13 @@ export function AuditWorkstation() {
     // Status filter
     const [statusFilter, setStatusFilter] = useState<DraftStatus | 'ALL'>('AWAITING_REVIEW')
 
-    // Batch selection
     const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set())
     const [batchProcessing, setBatchProcessing] = useState(false)
+    const [selectedQuestionIndices, setSelectedQuestionIndices] = useState<Set<number>>(new Set())
+    const [batchTagProcessing, setBatchTagProcessing] = useState(false)
+    const [batchTagDialogOpen, setBatchTagDialogOpen] = useState(false)
+    const [batchTagMode, setBatchTagMode] = useState<'add' | 'remove' | null>(null)
+    const [batchSelectedTags, setBatchSelectedTags] = useState<string[]>([])
 
     // Reject modal
     const [rejectingDraftId, setRejectingDraftId] = useState<string | null>(null)
@@ -651,6 +659,87 @@ export function AuditWorkstation() {
         fetchDrafts()
     }
 
+    const toggleQuestionSelection = (index: number) => {
+        setSelectedQuestionIndices(prev => {
+            const next = new Set(prev)
+            if (next.has(index)) next.delete(index)
+            else next.add(index)
+            return next
+        })
+    }
+
+    const toggleAllQuestions = () => {
+        if (selectedQuestionIndices.size === questions.length) {
+            setSelectedQuestionIndices(new Set())
+        } else {
+            setSelectedQuestionIndices(new Set(questions.map((_, i) => i)))
+        }
+    }
+
+    const clearQuestionSelection = () => {
+        setSelectedQuestionIndices(new Set())
+    }
+
+    const openBatchTagDialog = (mode: 'add' | 'remove') => {
+        setBatchTagMode(mode)
+        setBatchSelectedTags([])
+        setBatchTagDialogOpen(true)
+    }
+
+    const closeBatchTagDialog = () => {
+        setBatchTagDialogOpen(false)
+        setBatchTagMode(null)
+        setBatchSelectedTags([])
+    }
+
+    const executeBatchTagOperation = async () => {
+        if (selectedQuestionIndices.size === 0 || batchSelectedTags.length === 0 || !batchTagMode) return
+
+        setBatchTagProcessing(true)
+        setSaveMsg(null)
+
+        try {
+            const questionIds = Array.from(selectedQuestionIndices).map(idx => `${activeDraft?.id}-q${idx}`)
+            const requestBody = {
+                questionIds,
+                add: batchTagMode === 'add' ? batchSelectedTags : [],
+                remove: batchTagMode === 'remove' ? batchSelectedTags : [],
+            }
+
+            const result = await fetchApi<{ ok: boolean; affectedCount: number }>('/api/questions/batch/tags', {
+                method: 'POST',
+                body: JSON.stringify(requestBody),
+            })
+
+            if (result.ok) {
+                setDrafts(prev => prev.map(d => {
+                    if (d.id !== activeDraftId) return d
+                    const newQuestions = d.draftJson.questions.map((q, idx) => {
+                        if (!selectedQuestionIndices.has(idx)) return q
+                        const currentTags = q.tagSlugs || []
+                        if (batchTagMode === 'add') {
+                            return { ...q, tagSlugs: [...new Set([...currentTags, ...batchSelectedTags])] }
+                        } else {
+                            return { ...q, tagSlugs: currentTags.filter(slug => !batchSelectedTags.includes(slug)) }
+                        }
+                    })
+                    return { ...d, draftJson: { ...d.draftJson, questions: newQuestions } }
+                }))
+
+                setSaveMsg(`批次${batchTagMode === 'add' ? '添加' : '移除'}標籤成功，影響 ${result.affectedCount} 題`)
+                setTimeout(() => setSaveMsg(null), 5000)
+                clearQuestionSelection()
+                closeBatchTagDialog()
+            }
+        } catch (err) {
+            const msg = err instanceof ApiClientError ? err.message : '批次標籤操作失敗'
+            setSaveMsg(`批次標籤操作失敗: ${msg}`)
+            setTimeout(() => setSaveMsg(null), 5000)
+        } finally {
+            setBatchTagProcessing(false)
+        }
+    }
+
     const getDisplayName = (d: ParsedDraft) => d.originalFilename ?? d.originalUrl.split('/').pop() ?? '未知檔案'
     const getDisplayTime = (d: ParsedDraft) =>
         new Date(d.createdAt).toLocaleString('zh-TW', {
@@ -1073,6 +1162,53 @@ export function AuditWorkstation() {
                 </div>
             )}
 
+            {/* ═══════════ Question batch toolbar ═══════════ */}
+            {!isReadOnly && questions.length > 0 && (
+                <div className="card p-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={toggleAllQuestions}
+                            className="flex items-center gap-2 text-sm text-text-muted hover:text-text-base transition"
+                        >
+                            {selectedQuestionIndices.size === questions.length
+                                ? <CheckSquare className="size-4 text-primary-base" />
+                                : <Square className="size-4" />}
+                            {selectedQuestionIndices.size > 0
+                                ? `已選 ${selectedQuestionIndices.size} / ${questions.length} 題`
+                                : `全選 (${questions.length})`}
+                        </button>
+                    </div>
+                    {selectedQuestionIndices.size > 0 && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => openBatchTagDialog('add')}
+                                disabled={batchTagProcessing || generatingExplanations}
+                                className="btn-primary !py-1.5 !px-3 text-xs gap-1.5"
+                            >
+                                {batchTagProcessing && batchTagMode === 'add' ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
+                                批量添加標籤
+                            </button>
+                            <button
+                                onClick={() => openBatchTagDialog('remove')}
+                                disabled={batchTagProcessing || generatingExplanations}
+                                className="btn-secondary !py-1.5 !px-3 text-xs gap-1.5 !bg-orange-500/10 !text-orange-500 hover:!bg-orange-500/20 border-orange-500/20"
+                            >
+                                {batchTagProcessing && batchTagMode === 'remove' ? <Loader2 className="size-3 animate-spin" /> : <Minus className="size-3" />}
+                                批量移除標籤
+                            </button>
+                            <button
+                                onClick={clearQuestionSelection}
+                                disabled={batchTagProcessing}
+                                className="p-1.5 rounded-lg text-text-muted hover:text-text-base hover:bg-bg-base transition-colors"
+                                title="清除選擇"
+                            >
+                                <XCircle className="size-4" />
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* ═══════════ Question list ═══════════ */}
             <div className="space-y-3">
                 {questions.map((q, i) => {
@@ -1087,8 +1223,17 @@ export function AuditWorkstation() {
                                 isEditing && "!border-primary-base/40 !bg-primary-base/5"
                             )}
                         >
-                            {/* Header */}
                             <div className="flex items-start gap-3 p-4">
+                                {!isReadOnly && (
+                                    <button
+                                        onClick={() => toggleQuestionSelection(i)}
+                                        className="shrink-0 pt-1"
+                                    >
+                                        {selectedQuestionIndices.has(i)
+                                            ? <CheckSquare className="size-4 text-primary-base" />
+                                            : <Square className="size-4 text-text-muted" />}
+                                    </button>
+                                )}
                                 <span className="shrink-0 w-9 h-9 rounded-xl bg-primary-base/15 text-primary-base flex items-center justify-center text-sm font-bold font-heading">
                                     {i + 1}
                                 </span>
@@ -1099,11 +1244,20 @@ export function AuditWorkstation() {
                                     <p className="text-sm text-text-base leading-relaxed">
                                         <LatexText>{q.stem}</LatexText>
                                     </p>
-                                    {q.imagePlaceholders && q.imagePlaceholders.length > (q.imageUrls?.length || 0) && (
-                                        <span className="inline-block mt-1 text-xs text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded">
-                                            含 {q.imagePlaceholders.length - (q.imageUrls?.length || 0)} 張圖片待截取
-                                        </span>
-                                    )}
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                        {q.difficulty !== undefined && q.difficulty !== null ? (
+                                            <span className="text-xs text-text-muted">
+                                                難度 {'★'.repeat(q.difficulty)}{'☆'.repeat(5 - q.difficulty)}
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-text-muted">難度 未設定</span>
+                                        )}
+                                        {q.imagePlaceholders && q.imagePlaceholders.length > (q.imageUrls?.length || 0) && (
+                                            <span className="text-xs text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded">
+                                                含 {q.imagePlaceholders.length - (q.imageUrls?.length || 0)} 張圖片待截取
+                                            </span>
+                                        )}
+                                    </div>
                                 </button>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                     {!isReadOnly && (
@@ -1242,6 +1396,13 @@ export function AuditWorkstation() {
                                     {isEditing ? (
                                         <div className="space-y-4">
                                             <div>
+                                                <label className="text-xs text-text-muted mb-2 block">難度設定</label>
+                                                <DifficultySelector
+                                                    value={q.difficulty}
+                                                    onChange={(difficulty) => updateQuestion(i, { difficulty })}
+                                                />
+                                            </div>
+                                            <div>
                                                 <div className="flex items-center justify-between mb-1">
                                                     <label className="text-xs text-text-muted">詳解</label>
                                                     <button
@@ -1295,6 +1456,134 @@ export function AuditWorkstation() {
                     )
                 })}
             </div>
+
+            {batchTagDialogOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-bg-surface w-full max-w-lg rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95 p-6 space-y-4 border border-border-base">
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-full ${batchTagMode === 'add' ? 'bg-emerald-500/10' : 'bg-orange-500/10'}`}>
+                                <Tags className={`size-5 ${batchTagMode === 'add' ? 'text-emerald-500' : 'text-orange-500'}`} />
+                            </div>
+                            <h2 className="text-lg font-heading font-bold text-text-base">
+                                {batchTagMode === 'add' ? '批量添加標籤' : '批量移除標籤'}
+                            </h2>
+                        </div>
+
+                        <p className="text-sm text-text-muted">
+                            已選擇 {selectedQuestionIndices.size} 道題目，請選擇要{batchTagMode === 'add' ? '添加' : '移除'}的標籤：
+                        </p>
+
+                        <GroupedTagMultiSelect
+                            selectedSlugs={batchSelectedTags}
+                            onChange={setBatchSelectedTags}
+                            className="w-full"
+                        />
+
+                        <div className="flex justify-end gap-3 pt-4 border-t border-border-base">
+                            <button
+                                onClick={closeBatchTagDialog}
+                                disabled={batchTagProcessing}
+                                className="px-4 py-2 text-sm font-medium text-text-muted hover:text-text-base transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={executeBatchTagOperation}
+                                disabled={batchTagProcessing || batchSelectedTags.length === 0}
+                                className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+                                    batchTagMode === 'add'
+                                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                        : 'bg-orange-600 hover:bg-orange-500 text-white'
+                                }`}
+                            >
+                                {batchTagProcessing ? <Loader2 className="size-4 animate-spin" /> : null}
+                                確認{batchTagMode === 'add' ? '添加' : '移除'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Difficulty Selector sub-component
+// ---------------------------------------------------------------------------
+interface DifficultySelectorProps {
+    value: 1 | 2 | 3 | 4 | 5 | null | undefined
+    onChange: (difficulty: 1 | 2 | 3 | 4 | 5 | null) => void
+}
+
+const DIFFICULTY_LABELS: Record<number, string> = {
+    1: '最簡單',
+    2: '簡單',
+    3: '中等',
+    4: '困難',
+    5: '最困難',
+}
+
+function DifficultySelector({ value, onChange }: DifficultySelectorProps) {
+    const levels: (1 | 2 | 3 | 4 | 5)[] = [1, 2, 3, 4, 5]
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center gap-2">
+                {levels.map((level) => {
+                    const isSelected = value === level
+                    const isNull = value === null || value === undefined
+                    return (
+                        <button
+                            key={level}
+                            type="button"
+                            onClick={() => onChange(level)}
+                            className={cn(
+                                "flex flex-col items-center justify-center w-12 h-12 rounded-xl border transition-all duration-200",
+                                isSelected
+                                    ? "bg-amber-500/20 border-amber-500/50 text-amber-600 dark:text-amber-400 shadow-sm"
+                                    : isNull
+                                        ? "bg-bg-base border-border-base text-text-muted hover:border-amber-500/30 hover:bg-amber-500/5"
+                                        : "bg-bg-base border-border-base text-text-muted hover:border-amber-500/30 hover:bg-amber-500/5"
+                            )}
+                            title={`難度 ${level}: ${DIFFICULTY_LABELS[level]}`}
+                        >
+                            <span className={cn(
+                                "text-sm font-bold",
+                                isSelected ? "text-amber-600 dark:text-amber-400" : "text-text-muted"
+                            )}>
+                                {level}
+                            </span>
+                            <span className="text-[10px] leading-none mt-0.5">
+                                {'★'.repeat(level as number)}
+                            </span>
+                        </button>
+                    )
+                })}
+                <button
+                    type="button"
+                    onClick={() => onChange(null)}
+                    className={cn(
+                        "flex flex-col items-center justify-center w-12 h-12 rounded-xl border transition-all duration-200",
+                        value === null || value === undefined
+                            ? "bg-gray-500/20 border-gray-500/50 text-gray-600 dark:text-gray-400 shadow-sm"
+                            : "bg-bg-base border-border-base text-text-muted hover:border-gray-500/30 hover:bg-gray-500/5"
+                    )}
+                    title="未設定難度"
+                >
+                    <span className={cn(
+                        "text-sm font-bold",
+                        value === null || value === undefined ? "text-gray-600 dark:text-gray-400" : "text-text-muted"
+                    )}>
+                        -
+                    </span>
+                    <span className="text-[10px] leading-none mt-0.5">未設</span>
+                </button>
+            </div>
+            <p className="text-xs text-text-muted">
+                {value !== null && value !== undefined
+                    ? `難度 ${value}: ${DIFFICULTY_LABELS[value]}`
+                    : '難度未設定'}
+            </p>
         </div>
     )
 }

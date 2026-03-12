@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install pdftoppm (poppler-utils) for PDF rasterization and openssl for Prisma
-RUN apk add --no-cache poppler-utils openssl
+# Install openssl for Prisma
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 

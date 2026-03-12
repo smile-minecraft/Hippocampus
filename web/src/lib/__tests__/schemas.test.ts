@@ -9,6 +9,7 @@ import {
     CreateTagSchema,
     PatchRoleSchema,
     PresignUploadSchema,
+    ManageQuestionTagsSchema,
 } from '../schemas'
 
 // ---------------------------------------------------------------------------
@@ -358,5 +359,60 @@ describe('PresignUploadSchema', () => {
             sizeBytes: 512,
         })
         expect(result.success).toBe(true)
+    })
+})
+
+// ---------------------------------------------------------------------------
+// ManageQuestionTagsSchema
+// ---------------------------------------------------------------------------
+
+describe('ManageQuestionTagsSchema', () => {
+    it('accepts add array only', () => {
+        const result = ManageQuestionTagsSchema.safeParse({
+            add: ['anatomy', 'physiology'],
+        })
+        expect(result.success).toBe(true)
+    })
+
+    it('accepts remove array only', () => {
+        const result = ManageQuestionTagsSchema.safeParse({
+            remove: ['old-tag'],
+        })
+        expect(result.success).toBe(true)
+    })
+
+    it('accepts both add and remove arrays', () => {
+        const result = ManageQuestionTagsSchema.safeParse({
+            add: ['new-tag'],
+            remove: ['old-tag'],
+        })
+        expect(result.success).toBe(true)
+    })
+
+    it('accepts empty arrays', () => {
+        const result = ManageQuestionTagsSchema.safeParse({
+            add: [],
+            remove: [],
+        })
+        expect(result.success).toBe(true)
+    })
+
+    it('rejects when neither add nor remove is provided', () => {
+        const result = ManageQuestionTagsSchema.safeParse({})
+        expect(result.success).toBe(false)
+    })
+
+    it('rejects empty string in add array', () => {
+        const result = ManageQuestionTagsSchema.safeParse({
+            add: [''],
+        })
+        expect(result.success).toBe(false)
+    })
+
+    it('rejects array with more than 50 items', () => {
+        const result = ManageQuestionTagsSchema.safeParse({
+            add: Array(51).fill('tag'),
+        })
+        expect(result.success).toBe(false)
     })
 })

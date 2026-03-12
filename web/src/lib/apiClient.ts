@@ -19,6 +19,7 @@ import type {
     PresignedUrlPayload,
     UploadBindPayload,
     Attempt,
+    Tag,
 } from '@/types'
 
 export type {
@@ -29,6 +30,7 @@ export type {
     PresignedUrlPayload,
     UploadBindPayload,
     Attempt,
+    Tag,
 }
 
 // ---------------------------------------------------------------------------
@@ -483,6 +485,31 @@ export async function updateAdminQuestion(id: string, payload: Partial<Question>
 export async function deleteAdminQuestion(id: string): Promise<void> {
     return fetchApi<void>(`/api/admin/questions/${id}`, {
         method: 'DELETE'
+    });
+}
+
+export async function updateQuestionTags(id: string, payload: { add?: string[]; remove?: string[] }): Promise<{ id: string; stem: string; updatedAt: string; tags: Tag[] }> {
+    return fetchApi<{ id: string; stem: string; updatedAt: string; tags: Tag[] }>(`/api/questions/${id}/tags`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+    });
+}
+
+export interface BatchUpdateTagsPayload {
+    questionIds: string[];
+    add: string[];
+    remove: string[];
+}
+
+export interface BatchUpdateTagsResponse {
+    ok: boolean;
+    affectedCount: number;
+}
+
+export async function batchUpdateQuestionTags(payload: BatchUpdateTagsPayload): Promise<BatchUpdateTagsResponse> {
+    return fetchApi<BatchUpdateTagsResponse>('/api/questions/batch/tags', {
+        method: 'POST',
+        body: JSON.stringify(payload)
     });
 }
 
