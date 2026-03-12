@@ -10,6 +10,7 @@ import { useState, useMemo } from 'react'
 import { updateAdminQuestion, deleteAdminQuestion, type Question } from '@/lib/apiClient'
 import { LatexText } from '@/components/ui/LatexText'
 import { GroupedTagMultiSelect } from '@/components/quiz/GroupedTagMultiSelect'
+import { formatQuestion } from '@/lib/validation/question-formatter'
 
 function getCsrfToken(): string {
     if (typeof document === 'undefined') return ''
@@ -31,6 +32,24 @@ export default function ExamDetailPage() {
     const { data: questions, isLoading } = useQuery({
         queryKey: ['admin-exams', id],
         queryFn: () => fetchAdminExamQuestions(id),
+        select: (data) => {
+            // Format questions to extract any embedded options from stems
+            return data.map(q => {
+                const result = formatQuestion({
+                    stem: q.stem,
+                    options: typeof q.options === 'string'
+                        ? (JSON.parse(q.options) as Record<string, string>)
+                        : q.options,
+                    explanation: q.explanation,
+                })
+                return {
+                    ...q,
+                    stem: result.question.stem,
+                    options: result.question.options,
+                    explanation: result.question.explanation ?? null,
+                }
+            })
+        },
     })
 
     // Zustand bulk selection state

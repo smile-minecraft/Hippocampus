@@ -12,6 +12,7 @@ import type { QuestionResult } from '@/store/quizSlice'
 import { submitAttempt } from '@/lib/apiClient'
 import { log } from '@/lib/logger'
 import type { Question } from '@/types'
+import { formatQuestion } from '@/lib/validation/question-formatter'
 import { ChevronRight, SkipForward, RotateCcw, ChevronDown, ChevronUp, CheckCircle2, XCircle, MinusCircle } from 'lucide-react'
 import Image from 'next/image'
 
@@ -53,7 +54,23 @@ export function QuizCard({ initialQuestions }: QuizCardProps) {
     const didInit = useRef(false)
     useEffect(() => {
         if (!didInit.current && initialQuestions.length > 0) {
-            store.getState().resetSession(initialQuestions)
+            // Format questions to extract any embedded options from stems
+            const formattedQuestions = initialQuestions.map(q => {
+                const result = formatQuestion({
+                    stem: q.stem,
+                    options: typeof q.options === 'string'
+                        ? (JSON.parse(q.options) as Record<string, string>)
+                        : q.options,
+                    explanation: q.explanation,
+                })
+                return {
+                    ...q,
+                    stem: result.question.stem,
+                    options: result.question.options,
+                    explanation: result.question.explanation ?? null,
+                }
+            })
+            store.getState().resetSession(formattedQuestions)
             didInit.current = true
         }
     }, [initialQuestions, store])

@@ -6,6 +6,7 @@ import { fetchRelatedQuestions } from '@/lib/apiClient'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { RelatedQuestionSkeleton } from '@/components/ui/Skeleton'
 import { cn } from '@/lib/cn'
+import { formatQuestion } from '@/lib/validation/question-formatter'
 
 interface RelatedQuestionsProps {
     /** Initially active slug — derived from SSR prefetch */
@@ -74,11 +75,26 @@ function RelatedQuestionsInner({ slug }: { slug: string }) {
         )
     }
 
+    // Format questions to extract any embedded options from stems
+    const formattedQuestions = questions.map(q => {
+        const result = formatQuestion({
+            stem: q.stem,
+            options: typeof q.options === 'string'
+                ? (JSON.parse(q.options) as Record<string, string>)
+                : q.options,
+            explanation: q.explanation,
+        })
+        return {
+            ...q,
+            stem: result.question.stem,
+            options: result.question.options,
+        }
+    })
+
     return (
         <ul className="space-y-2 px-2" aria-label="關聯考古題">
-            {questions.map((q) => {
-                const optionsObj = typeof q.options === 'string' ? (JSON.parse(q.options) as Record<string, string>) : q.options;
-                const options: string[] = Object.keys(optionsObj).sort().map(k => optionsObj[k]);
+            {formattedQuestions.map((q) => {
+                const options: string[] = Object.keys(q.options).sort().map(k => q.options[k]);
                 return (
                     <li
                         key={q.id}
