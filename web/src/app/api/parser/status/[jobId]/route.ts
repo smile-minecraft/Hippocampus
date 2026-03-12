@@ -89,6 +89,9 @@ export async function DELETE(
         }
 
         if (state === 'active') {
+            // Mark as canceled in job data so the worker can detect it
+            await job.updateData({ ...job.data, _cancelRequested: true });
+
             // Active jobs can't be removed with job.remove() — BullMQ throws.
             // Move to failed state so the job is no longer retried.
             try {

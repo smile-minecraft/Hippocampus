@@ -41,6 +41,8 @@ export const ParseDocumentJobSchema = z.object({
     originalFilename: z.string().min(1),
     /** Approx file size in bytes — used to estimate processing time */
     fileSizeBytes: z.number().int().nonnegative(),
+    /** Flag set by API when user requests cancellation */
+    _cancelRequested: z.boolean().optional(),
 });
 
 export type ParseDocumentJobData = z.infer<typeof ParseDocumentJobSchema>;

@@ -54,6 +54,9 @@ import {
     setWorkerMeta,
 } from "./tui/store.js";
 
+// Queue instance for cancellation checks (must be at module scope)
+const parserQueue = new Queue(QUEUE_NAMES.PARSER, { connection: redisConnection });
+
 // ---------------------------------------------------------------------------
 // Concurrency & lock configuration
 // ---------------------------------------------------------------------------
@@ -65,6 +68,22 @@ const LOCK_DURATION_MS = 660_000; // 660 s — must exceed cockatiel's 600 s tim
 // overwhelming the AI service with huge payloads.
 // ---------------------------------------------------------------------------
 const AI_BATCH_SIZE = Number(process.env.AI_BATCH_SIZE) || 3;
+
+// ---------------------------------------------------------------------------
+// Cancellation helper — checks if job was requested to cancel
+// ---------------------------------------------------------------------------
+async function checkCancellation(job: Job<ParseDocumentJobData>, traceId: string): Promise<void> {
+    if (job.data._cancelRequested) {
+        log.info("parser-worker", `Job ${job.id} canceled by user`, { traceId, jobId: job.id });
+        throw new Error("任務已被用戶取消");
+    }
+    const freshJob = await parserQueue.getJob(job.id!);
+    if (freshJob?.data._cancelRequested) {
+        job.data._cancelRequested = true;
+        log.info("parser-worker", `Job ${job.id} canceled by user`, { traceId, jobId: job.id });
+        throw new Error("任務已被用戶取消");
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Progress reporter — writes to BullMQ (for frontend) AND TUI store (for operator)
@@ -197,6 +216,7 @@ async function processImageBatches(
     let completedBatches = 0;
 
     for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+        await checkCancellation(job, traceId);
         const batch = batches[batchIdx];
         const batchLabel = `批次 ${batchIdx + 1}/${totalBatches}`;
 
@@ -363,6 +383,7 @@ async function processPdfDirect(
     log.info('parser-worker', `PDF has ${totalPages} pages`, { traceId, totalPages });
 
     await reportProgress(job, 25, '正在等待 AI 服務就緒...');
+    await checkCancellation(job, traceId);
     const waitResult = await waitForServiceHealth({
         maxWaitMs: 180_000,
         pollIntervalMs: 5_000,
@@ -407,6 +428,7 @@ async function processPdfDirect(
     const chunkResults: { data: ExtractionResponse; meta: LLMMeta }[] = [];
 
     for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+        await checkCancellation(job, traceId);
         const chunkLabel = `區塊 ${chunkIdx + 1}/${totalChunks}`;
         const chunkPath = path.join(tmpDir, `chunk_${chunkIdx}.pdf`);
 
@@ -539,7 +561,6 @@ worker.on("stalled", (jobId) => {
 });
 
 // 5. Poll queue counts every 5 s for the TUI stats panel
-const parserQueue = new Queue(QUEUE_NAMES.PARSER, { connection: redisConnection });
 const QUEUE_POLL_INTERVAL_MS = 5_000;
 
 async function pollQueueCounts(): Promise<void> {
