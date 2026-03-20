@@ -1,132 +1,145 @@
-"use client"
-import React, { useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { Lock, Mail, Loader2 } from 'lucide-react';
+'use client'
+
+import { Suspense, useId, useState } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Loader2, Lock, Mail } from 'lucide-react'
+import { AuthPanel } from '@/components/ui/AuthPanel'
+import { Button } from '@/components/ui/Button'
+import { Field } from '@/components/ui/Field'
+import { sanitizeInternalPath } from '@/lib/navigation'
 
 function LoginForm() {
-    const searchParams = useSearchParams();
-    const redirect = searchParams.get('redirect') || '/';
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const redirect = sanitizeInternalPath(searchParams.get('redirect'), '/')
+    const emailId = useId()
+    const passwordId = useId()
+    const errorId = useId()
 
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [email, setEmail] = useState('')
+    const [password, setPassword] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setError(null);
+    async function handleSubmit(event: React.FormEvent) {
+        event.preventDefault()
+        setLoading(true)
+        setError(null)
 
         try {
-            const res = await fetch('/api/auth/login', {
+            const response = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
-            const text = await res.text();
-            let data: Record<string, unknown> = {};
-            try { data = JSON.parse(text); } catch { /* ignore */ }
+                body: JSON.stringify({ email, password }),
+            })
 
-            if (!res.ok || (data && !data.ok)) {
-                throw new Error((data.message as string) || (data.error as string) || '登入失敗，請檢查帳號密碼');
+            const text = await response.text()
+            let data: Record<string, unknown> = {}
+            try {
+                data = JSON.parse(text)
+            } catch {
+                data = {}
             }
 
-            // Redirect to the original page or default
-            window.location.href = redirect;
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : '登入失敗');
+            if (!response.ok || !data.ok) {
+                throw new Error(
+                    (data.message as string) ||
+                    (data.error as string) ||
+                    '登入失敗，請檢查帳號密碼',
+                )
+            }
+
+            router.replace(redirect)
+        } catch (submitError: unknown) {
+            setError(submitError instanceof Error ? submitError.message : '登入失敗')
         } finally {
-            setLoading(false);
+            setLoading(false)
         }
-    };
+    }
 
     return (
-        <>
-            {error && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm text-center font-medium">
-                    {error}
+        <form onSubmit={handleSubmit} className="space-y-5">
+            {error ? (
+                <div id={errorId} className="notice notice-error" role="alert" aria-live="polite">
+                    <p className="text-sm font-medium text-text-base">{error}</p>
                 </div>
-            )}
+            ) : null}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-text-muted ml-1">電子郵件</label>
-                    <div className="relative">
-                        <Mail className="absolute left-3 top-2.5 h-5 w-5 text-text-muted" />
-                        <input
-                            type="email"
-                            className="w-full bg-bg-base border border-border-base rounded-xl pl-10 pr-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            placeholder="name@example.com"
-                            required
-                            autoComplete="email"
-                        />
-                    </div>
+            <Field label="電子郵件" htmlFor={emailId} required>
+                <div className="relative">
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-text-subtle" />
+                    <input
+                        id={emailId}
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        className="input pl-11"
+                        placeholder="name@example.com"
+                        aria-invalid={Boolean(error)}
+                        aria-describedby={error ? errorId : undefined}
+                        required
+                    />
                 </div>
+            </Field>
 
-                <div className="space-y-1.5">
-                    <div className="flex items-center justify-between ml-1">
-                        <label className="text-sm font-medium text-text-muted">密碼</label>
-                        <Link href="/forgot-password" className="text-xs text-teal-400 hover:underline transition-colors">
-                            忘記密碼？
-                        </Link>
-                    </div>
-                    <div className="relative">
-                        <Lock className="absolute left-3 top-2.5 h-5 w-5 text-text-muted" />
-                        <input
-                            type="password"
-                            className="w-full bg-bg-base border border-border-base rounded-xl pl-10 pr-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            required
-                            autoComplete="current-password"
-                        />
-                    </div>
+            <Field label="密碼" htmlFor={passwordId} required>
+                <div className="relative">
+                    <Lock className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-text-subtle" />
+                    <input
+                        id={passwordId}
+                        type="password"
+                        autoComplete="current-password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        className="input pl-11"
+                        placeholder="輸入您的密碼"
+                        aria-invalid={Boolean(error)}
+                        aria-describedby={error ? errorId : undefined}
+                        required
+                    />
                 </div>
+            </Field>
 
-                <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-teal-900/20 flex justify-center items-center mt-4 disabled:opacity-70"
-                >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : '安全登入'}
-                </button>
+            <div className="flex items-center justify-between text-sm">
+                <span className="text-text-subtle">登入後會保留目前工作進度與偏好設定。</span>
+                <Link href="/forgot-password" className="font-medium text-primary-base transition-colors hover:text-primary-hover">
+                    忘記密碼？
+                </Link>
+            </div>
 
-                <p className="text-sm text-text-muted text-center mt-4">
-                    沒有帳號？{' '}
-                    <Link href="/register" className="text-teal-400 hover:underline font-medium">
-                        建立帳號
-                    </Link>
-                </p>
-            </form>
-        </>
-    );
+            <Button type="submit" size="lg" className="w-full" isLoading={loading}>
+                {!loading ? '登入工作區' : null}
+            </Button>
+        </form>
+    )
 }
 
 export default function LoginPage() {
     return (
-        <div className="min-h-screen bg-bg-base flex justify-center items-center p-4">
-            <div className="max-w-md w-full bg-bg-surface p-8 rounded-2xl border border-border-base shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-teal-400 to-cyan-500"></div>
-
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-cyan-500 mb-2">
-                        Hippocampus
-                    </h1>
-                    <p className="text-text-muted text-sm">系統身分驗證中心</p>
-                </div>
-
-                <Suspense fallback={
-                    <div className="flex justify-center p-4">
-                        <Loader2 className="w-6 h-6 animate-spin text-teal-400" />
+        <AuthPanel
+            eyebrow="Authentication"
+            title="登入 Hippocampus"
+            description="進入你的刷題、知識共筆與審核工作區。"
+            footer={(
+                <p className="text-sm leading-7 text-text-muted">
+                    沒有帳號？{' '}
+                    <Link href="/register" className="font-semibold text-primary-base transition-colors hover:text-primary-hover">
+                        建立新帳號
+                    </Link>
+                </p>
+            )}
+        >
+            <Suspense
+                fallback={(
+                    <div className="flex items-center justify-center rounded-2xl border border-border-base bg-surface-base px-4 py-8">
+                        <Loader2 className="size-5 animate-spin text-primary-base" />
                     </div>
-                }>
-                    <LoginForm />
-                </Suspense>
-            </div>
-        </div>
-    );
+                )}
+            >
+                <LoginForm />
+            </Suspense>
+        </AuthPanel>
+    )
 }

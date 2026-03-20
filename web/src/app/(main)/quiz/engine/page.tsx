@@ -4,6 +4,7 @@ import { QuizCard } from '@/components/quiz/QuizCard'
 import { fetchQuestions } from '@/lib/apiClient'
 import { QuestionSkeleton } from '@/components/ui/Skeleton'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { log } from '@/lib/logger'
 import type { Question } from '@/types'
 
@@ -45,21 +46,27 @@ export default async function QuizPage({ searchParams }: PageProps) {
     }
 
     return (
-        <main className="min-h-screen bg-bg-base px-4 py-10 transition-colors duration-300">
-            <div className="max-w-2xl mx-auto space-y-8">
-                <header className="space-y-2">
-                    <h1 className="text-3xl font-heading font-bold text-text-base tracking-tight">測驗模式</h1>
-                    <p className="text-sm font-medium text-text-muted">
-                        快捷鍵：數字鍵選答 · Space 確認 · Esc 跳過
-                    </p>
-                </header>
+        <div className="space-y-6">
+            <PageHeader
+                eyebrow="Quiz Engine"
+                title="沉浸式作答模式"
+                description="作答時會自動收合全域側欄，讓焦點回到題目本身。"
+                meta={(
+                    <>
+                        <span className="pill">數字鍵選答</span>
+                        <span className="pill">Space 確認</span>
+                        <span className="pill">Esc 跳過</span>
+                    </>
+                )}
+            />
 
+            <div className="mx-auto max-w-2xl">
                 <ErrorBoundary>
                     <Suspense fallback={<QuestionSkeleton />}>
                         <QuizCard initialQuestions={initialQuestions} />
                     </Suspense>
                 </ErrorBoundary>
             </div>
-        </main>
+        </div>
     )
 }

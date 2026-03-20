@@ -29,7 +29,9 @@ export function ThemeToggle() {
     return (
         <button
             onClick={cycleTheme}
-            className="flex items-center justify-center size-8 rounded-lg text-text-muted hover:text-text-base hover:bg-bg-base transition-colors duration-200"
+            type="button"
+            aria-label={getTitle()}
+            className="flex items-center justify-center rounded-2xl border border-border-base bg-surface-base px-3 py-2 text-text-muted shadow-sm transition-colors duration-200 hover:border-border-hover hover:bg-surface-muted hover:text-text-base"
             title={getTitle()}
             suppressHydrationWarning
         >

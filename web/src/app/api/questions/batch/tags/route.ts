@@ -38,7 +38,7 @@ export async function POST(request: NextRequest): Promise<Response> {
                 return { affectedCount: 0 };
             }
 
-            const existingQuestionIds = existingQuestions.map((q) => q.id);
+            const existingQuestionIds = existingQuestions.map((question: { id: string }) => question.id);
 
             if (remove.length > 0) {
                 const tagsToRemove = await tx.tag.findMany({
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest): Promise<Response> {
                     await tx.questionTag.deleteMany({
                         where: {
                             questionId: { in: existingQuestionIds },
-                            tagId: { in: tagsToRemove.map((t) => t.id) },
+                            tagId: { in: tagsToRemove.map((tag: { id: string }) => tag.id) },
                         },
                     });
                 }
@@ -63,11 +63,11 @@ export async function POST(request: NextRequest): Promise<Response> {
                 });
 
                 if (tagsToAdd.length > 0) {
-                    const tagIds = tagsToAdd.map((t) => t.id);
-                    const data = existingQuestionIds.flatMap((qid) =>
-                        tagIds.map((tid) => ({
-                            questionId: qid,
-                            tagId: tid,
+                    const tagIds = tagsToAdd.map((tag: { id: string }) => tag.id);
+                    const data = existingQuestionIds.flatMap((questionId: string) =>
+                        tagIds.map((tagId: string) => ({
+                            questionId,
+                            tagId,
                         }))
                     );
                     await tx.questionTag.createMany({

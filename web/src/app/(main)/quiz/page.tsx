@@ -20,10 +20,8 @@ export default async function QuizDashboardPage() {
     }
 
     return (
-        <main className="min-h-screen bg-bg-base px-4 py-8 md:py-12">
-            <ErrorBoundary>
-                <QuizDashboard tagsData={tagsData} />
-            </ErrorBoundary>
-        </main>
+        <ErrorBoundary>
+            <QuizDashboard tagsData={tagsData} />
+        </ErrorBoundary>
     )
 }

@@ -1,8 +1,11 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { UploadCloud, File, X, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, File, Loader2, UploadCloud, X } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionCard } from "@/components/ui/SectionCard";
 
 export default function ParserUploadPage() {
     const router = useRouter();
@@ -15,8 +18,8 @@ export default function ParserUploadPage() {
     const [jobId, setJobId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
+    const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
         setIsDragging(true);
     };
 
@@ -24,39 +27,42 @@ export default function ParserUploadPage() {
         setIsDragging(false);
     };
 
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
+    const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
         setIsDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileSelect(e.dataTransfer.files[0]);
+
+        if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+            handleFileSelect(event.dataTransfer.files[0]);
         }
     };
 
-    const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            handleFileSelect(e.target.files[0]);
+    const handleFileInput = (event: ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files && event.target.files.length > 0) {
+            handleFileSelect(event.target.files[0]);
         }
     };
 
     const handleFileSelect = (selectedFile: File) => {
         setError(null);
         setSuccessMsg(null);
-        
-        // 限制檔案類型 (Word, PDF)
+
         const validTypes = [
-            "application/pdf", 
+            "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/msword"
+            "application/msword",
         ];
-        
-        if (!validTypes.includes(selectedFile.type) && !selectedFile.name.endsWith('.docx') && !selectedFile.name.endsWith('.pdf')) {
-            setError("只支援 PDF 與 Word (.docx) 檔案格式");
+
+        if (
+            !validTypes.includes(selectedFile.type) &&
+            !selectedFile.name.endsWith(".docx") &&
+            !selectedFile.name.endsWith(".pdf")
+        ) {
+            setError("只支援 PDF 與 Word (.docx) 檔案格式。");
             return;
         }
 
-        // 限制大小 (例如 10MB)
         if (selectedFile.size > 10 * 1024 * 1024) {
-            setError("檔案大小不能超過 10MB");
+            setError("檔案大小不能超過 10MB。");
             return;
         }
 
@@ -71,18 +77,15 @@ export default function ParserUploadPage() {
         }
     };
 
-    // 取得 Pre-signed URL 後，直接將檔案 PUT 到 MinIO
-    // 然後通知後端將 Job 丟入 Queue
     const handleUpload = async () => {
         if (!file) return;
 
         setIsUploading(true);
         setError(null);
-        setProgress(10); // 取得簽名 URL 階段
+        setProgress(10);
 
         try {
-            // 1. Get Presigned URL
-            const presignRes = await fetch("/api/upload/presign", {
+            const presignResponse = await fetch("/api/upload/presign", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -91,32 +94,27 @@ export default function ParserUploadPage() {
                 }),
             });
 
-            const presignData = await presignRes.json();
-            if (!presignRes.ok || !presignData.ok) {
+            const presignData = await presignResponse.json();
+            if (!presignResponse.ok || !presignData.ok) {
                 throw new Error(presignData.error || "無法取得上傳授權");
             }
 
             const { url, minioKey } = presignData.data;
-            setProgress(30);
+            setProgress(35);
 
-            // 2. Upload file directly to MinIO (or S3) via the presigned URL
-            // Next.js can't track native fetch progress easily without XMLHttpRequest,
-            // but for simplicity we'll just await it and fake progress.
-            const uploadRes = await fetch(url, {
+            const uploadResponse = await fetch(url, {
                 method: "PUT",
-                headers: {
-                    "Content-Type": file.type || "application/octet-stream",
-                },
+                headers: { "Content-Type": file.type || "application/octet-stream" },
                 body: file,
             });
 
-            if (!uploadRes.ok) {
+            if (!uploadResponse.ok) {
                 throw new Error("檔案上傳失敗");
             }
-            setProgress(70);
 
-            // 3. Notify backend to bind the file and start parsing job
-            const bindRes = await fetch("/api/upload/bind", {
+            setProgress(72);
+
+            const bindResponse = await fetch("/api/upload/bind", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -125,178 +123,202 @@ export default function ParserUploadPage() {
                 }),
             });
 
-            const bindData = await bindRes.json();
-            if (!bindRes.ok || !bindData.ok) {
+            const bindData = await bindResponse.json();
+            if (!bindResponse.ok || !bindData.ok) {
                 throw new Error(bindData.error || "後端處理檔案失敗");
             }
 
             setProgress(100);
-            setSuccessMsg("檔案上傳成功！已進入解析排程。");
+            setSuccessMsg("檔案上傳成功，已進入解析排程。");
             setJobId(bindData.data.jobId);
             setFile(null);
-
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "上傳過程發生錯誤");
+        } catch (uploadError: unknown) {
+            setError(uploadError instanceof Error ? uploadError.message : "上傳過程發生錯誤");
             setProgress(0);
         } finally {
             setIsUploading(false);
         }
     };
 
-    // Polling job status
     useEffect(() => {
         if (!jobId) return;
 
-        const interval = setInterval(async () => {
+        const interval = window.setInterval(async () => {
             try {
-                const res = await fetch(`/api/parser/status/${jobId}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.ok && data.data) {
-                        const status = data.data.status;
-                        
-                        if (status === 'COMPLETED' || status === 'FAILED') {
-                            clearInterval(interval);
-                            
-                            if (status === 'COMPLETED' && data.data.draftId) {
-                                router.push(`/parser/drafts/${data.data.draftId}`);
-                            } else if (status === 'FAILED') {
-                                setError("解析作業失敗，請確認檔案內容是否符合格式，或稍後再試。");
-                            }
-                        }
+                const response = await fetch(`/api/parser/status/${jobId}`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (!data.ok || !data.data) return;
+
+                const status = data.data.status;
+                if (status === "COMPLETED" || status === "FAILED") {
+                    window.clearInterval(interval);
+
+                    if (status === "COMPLETED" && data.data.draftId) {
+                        router.push(`/parser/drafts/${data.data.draftId}`);
+                    } else if (status === "FAILED") {
+                        setError("解析作業失敗，請確認檔案內容是否符合格式，或稍後再試。");
+                        setJobId(null);
                     }
                 }
-            } catch (e) {
-                // Ignore silent poll errors
+            } catch {
+                // Ignore transient polling errors.
             }
         }, 3000);
 
-        return () => clearInterval(interval);
+        return () => window.clearInterval(interval);
     }, [jobId, router]);
 
     return (
-        <div className="max-w-4xl mx-auto p-6 space-y-8 animate-fade-in">
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold text-text-base mb-2">考古題上傳解析</h1>
-                <p className="text-text-muted">上傳 Word 或 PDF 檔，系統將自動解析出題目並建立草稿。</p>
-            </div>
-
-            <div className="bg-bg-surface rounded-2xl border border-border-base p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-text-base mb-4">上傳檔案</h2>
-
-                {error && (
-                    <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl flex items-start">
-                        <AlertCircle className="w-5 h-5 mr-3 shrink-0 mt-0.5" />
-                        <p className="text-sm">{error}</p>
-                    </div>
-                )}
-
-                {successMsg && !jobId && (
-                    <div className="mb-6 p-4 bg-teal-500/10 border border-teal-500/20 text-teal-400 rounded-xl flex items-start">
-                        <CheckCircle2 className="w-5 h-5 mr-3 shrink-0 mt-0.5" />
-                        <p className="text-sm">{successMsg}</p>
-                    </div>
-                )}
-
-                {jobId && (
-                    <div className="mb-6 p-6 bg-teal-900/10 border border-teal-500/30 rounded-xl flex flex-col items-center justify-center space-y-4">
-                        <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
-                        <div className="text-center">
-                            <p className="font-medium text-teal-400 mb-1">正在由 AI 解析考卷中...</p>
-                            <p className="text-sm text-text-muted">這通常需要 1-3 分鐘，請勿關閉視窗。完成後將自動跳轉至草稿審核頁面。</p>
-                        </div>
-                    </div>
-                )}
-
-                {!jobId && (
+        <div className="space-y-6">
+            <PageHeader
+                eyebrow="Parser Workspace"
+                title="把考卷文件送進解析流程，接著直接進入可編輯的草稿審核。"
+                description="上傳與等待狀態都放在同一個頁面裡。這裡沿用 Notion 式的低噪音排版，但保留解析工作站需要的明確狀態回饋。"
+                meta={(
                     <>
-                        <div
-                            className={`border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center transition-all ${
-                                isDragging
-                                    ? "border-teal-500 bg-teal-500/5"
-                                    : "border-border-base bg-bg-base/50 hover:bg-bg-base hover:border-border-hover"
-                            } ${isUploading ? "opacity-50 pointer-events-none" : "cursor-pointer"}`}
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                            onClick={() => !file && !isUploading && fileInputRef.current?.click()}
-                        >
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                className="hidden"
-                                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                onChange={handleFileInput}
-                                disabled={isUploading}
-                            />
+                        <span className="pill">支援 PDF / DOCX</span>
+                        <span className="pill">10MB 內</span>
+                        <span className="pill">完成後自動跳轉草稿</span>
+                    </>
+                )}
+            />
 
-                            {file ? (
-                                <div className="flex flex-col items-center w-full max-w-sm" onClick={e => e.stopPropagation()}>
-                                    <div className="w-16 h-16 bg-teal-500/10 rounded-full flex items-center justify-center mb-4 relative">
-                                        <File className="w-8 h-8 text-teal-400" />
-                                        <button
-                                            onClick={clearFile}
-                                            disabled={isUploading}
-                                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors disabled:opacity-50"
+            <div className="page-grid-with-rail">
+                <div className="space-y-6">
+                    <SectionCard
+                        title="上傳檔案"
+                        description="拖曳或點擊上傳考卷，系統會先取得授權，再將文件送入解析佇列。"
+                    >
+                        {error ? (
+                            <div className="notice notice-error" role="alert">
+                                <div className="flex items-start gap-3">
+                                    <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                                    <p className="text-sm font-medium text-text-base">{error}</p>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {successMsg && !jobId ? (
+                            <div className="notice notice-success" role="status">
+                                <div className="flex items-start gap-3">
+                                    <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                                    <p className="text-sm font-medium text-text-base">{successMsg}</p>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {jobId ? (
+                            <div className="rounded-[26px] border border-border-base bg-bg-surface px-6 py-10 text-center">
+                                <Loader2 className="mx-auto size-8 animate-spin text-primary-base" />
+                                <p className="mt-4 text-base font-semibold text-text-base">正在由 AI 解析考卷中...</p>
+                                <p className="mt-2 text-sm leading-7 text-text-muted">
+                                    這通常需要 1 到 3 分鐘，完成後會自動跳轉到草稿審核頁面。
+                                </p>
+                            </div>
+                        ) : (
+                            <>
+                                <div
+                                    className={[
+                                        "rounded-[30px] border-2 border-dashed px-6 py-12 transition-all",
+                                        isDragging
+                                            ? "border-primary-base bg-primary-muted/40"
+                                            : "border-border-base bg-bg-surface hover:border-border-hover hover:bg-surface-muted",
+                                        isUploading ? "pointer-events-none opacity-60" : "cursor-pointer",
+                                    ].join(" ")}
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    onClick={() => {
+                                        if (!file && !isUploading) {
+                                            fileInputRef.current?.click();
+                                        }
+                                    }}
+                                >
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        className="hidden"
+                                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                        onChange={handleFileInput}
+                                        disabled={isUploading}
+                                    />
+
+                                    {file ? (
+                                        <div
+                                            className="mx-auto flex w-full max-w-md flex-col items-center"
+                                            onClick={(event) => event.stopPropagation()}
                                         >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                    <p className="font-medium text-text-base text-center truncate w-full px-4">{file.name}</p>
-                                    <p className="text-sm text-text-muted mt-1">
-                                        {(file.size / (1024 * 1024)).toFixed(2)} MB
-                                    </p>
+                                            <div className="relative mb-4 inline-flex size-16 items-center justify-center rounded-full border border-border-base bg-bg-base">
+                                                <File className="size-8 text-primary-base" />
+                                                <button
+                                                    type="button"
+                                                    onClick={clearFile}
+                                                    disabled={isUploading}
+                                                    className="absolute -right-2 -top-2 inline-flex size-7 items-center justify-center rounded-full bg-danger-base text-white transition-colors hover:bg-danger-base/90 disabled:opacity-50"
+                                                    aria-label="移除檔案"
+                                                >
+                                                    <X className="size-4" />
+                                                </button>
+                                            </div>
+                                            <p className="w-full truncate px-4 text-center text-base font-semibold text-text-base">
+                                                {file.name}
+                                            </p>
+                                            <p className="mt-1 text-sm text-text-muted">
+                                                {(file.size / (1024 * 1024)).toFixed(2)} MB
+                                            </p>
 
-                                    {isUploading && (
-                                        <div className="w-full mt-6">
-                                            <div className="flex justify-between text-xs mb-1">
-                                                <span className="text-teal-400">上傳中...</span>
-                                                <span className="text-text-muted">{progress}%</span>
+                                            {isUploading ? (
+                                                <div className="mt-6 w-full">
+                                                    <div className="mb-2 flex items-center justify-between text-xs">
+                                                        <span className="text-primary-base">上傳中...</span>
+                                                        <span className="text-text-muted">{progress}%</span>
+                                                    </div>
+                                                    <div className="h-2 overflow-hidden rounded-full bg-bg-base">
+                                                        <div
+                                                            className="h-full rounded-full bg-cta-base transition-all duration-300"
+                                                            style={{ width: `${progress}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ) : (
+                                        <div className="pointer-events-none flex flex-col items-center">
+                                            <div className="mb-4 inline-flex size-16 items-center justify-center rounded-full border border-border-base bg-bg-base">
+                                                <UploadCloud className="size-8 text-text-muted" />
                                             </div>
-                                            <div className="h-2 w-full bg-bg-base rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-teal-500 to-cyan-500 transition-all duration-300"
-                                                    style={{ width: `${progress}%` }}
-                                                ></div>
-                                            </div>
+                                            <p className="text-base font-semibold text-text-base">點擊或拖曳檔案至此處</p>
+                                            <p className="mt-2 max-w-xs text-center text-sm leading-7 text-text-muted">
+                                                支援 PDF 與 Word 格式，單檔大小限制 10MB。
+                                            </p>
                                         </div>
                                     )}
                                 </div>
-                            ) : (
-                                <div className="flex flex-col items-center pointer-events-none">
-                                    <div className="w-16 h-16 bg-bg-surface border border-border-base rounded-full flex items-center justify-center mb-4">
-                                        <UploadCloud className="w-8 h-8 text-text-muted" />
+
+                                {file && !isUploading ? (
+                                    <div className="flex justify-end">
+                                        <Button onClick={() => void handleUpload()}>
+                                            開始上傳並解析
+                                        </Button>
                                     </div>
-                                    <p className="font-medium text-text-base mb-1">點擊或拖曳檔案至此處</p>
-                                    <p className="text-sm text-text-muted text-center max-w-xs">
-                                        支援 PDF, Word 格式<br />檔案大小限制 10MB
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        {file && !isUploading && (
-                            <div className="mt-6 flex justify-end">
-                                <button
-                                    onClick={handleUpload}
-                                    className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white px-6 py-2.5 rounded-xl font-medium shadow-lg shadow-teal-900/20 transition-all flex items-center"
-                                >
-                                    開始上傳並解析
-                                </button>
-                            </div>
+                                ) : null}
+                            </>
                         )}
-                    </>
-                )}
-            </div>
+                    </SectionCard>
+                </div>
 
-            <div className="bg-bg-surface rounded-2xl border border-border-base p-6 shadow-sm mt-8">
-                <h3 className="font-semibold text-text-base mb-4">上傳須知</h3>
-                <ul className="space-y-2 text-sm text-text-muted list-disc list-inside ml-4">
-                    <li>系統會自動使用 AI 分析考卷，將題幹、選項與答案分離。</li>
-                    <li>如果是圖片題（例如有配圖的選擇題），請盡量確認圖片解析度清晰，AI 會嘗試萃取圖片內容。</li>
-                    <li>上傳完成後，不會立刻進入題庫。您會進入「草稿審核」頁面，可以手動修改 AI 辨識錯誤的地方，確認無誤後再行發布。</li>
-                    <li>單次解析作業可能需要 1~3 分鐘，請耐心等候。</li>
-                </ul>
+                <aside className="page-rail">
+                    <SectionCard title="上傳須知">
+                        <ul className="space-y-3 text-sm leading-7 text-text-muted">
+                            <li>系統會自動分析題幹、選項與答案，並建立可編輯的草稿。</li>
+                            <li>若題目含圖片，請盡量提供清晰版面，方便 OCR 與圖像解析。</li>
+                            <li>解析完成後不會直接入庫，你仍可在草稿審核頁手動修正。</li>
+                            <li>若輪詢中斷，重新整理頁面後仍可在草稿列表中找到最新工作。</li>
+                        </ul>
+                    </SectionCard>
+                </aside>
             </div>
         </div>
     );

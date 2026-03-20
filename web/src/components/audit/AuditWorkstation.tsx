@@ -33,6 +33,7 @@ import {
 } from 'lucide-react'
 import { GroupedTagMultiSelect } from '@/components/quiz/GroupedTagMultiSelect'
 import { QuestionImageUploader } from './QuestionImageUploader'
+import { useFeedback } from '@/components/ui/FeedbackProvider'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -97,6 +98,7 @@ const STATUS_TABS: { key: DraftStatus | 'ALL'; label: string; color: string }[] 
 // Main component
 // ---------------------------------------------------------------------------
 export function AuditWorkstation() {
+    const { confirm, notify } = useFeedback()
     const [drafts, setDrafts] = useState<ParsedDraft[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -412,7 +414,13 @@ export function AuditWorkstation() {
     // Cancel explanation generation
     const cancelExplanationGeneration = async () => {
         if (!explanationJobId) return
-        if (!confirm('確定要取消詳解生成嗎？已生成的部分結果仍會保留。')) return
+        const accepted = await confirm({
+            title: '取消詳解生成？',
+            description: '已生成的部分結果仍會保留。',
+            confirmLabel: '取消生成',
+            tone: 'danger',
+        })
+        if (!accepted) return
 
         setExplanationCancelling(true)
         try {
@@ -536,7 +544,13 @@ export function AuditWorkstation() {
 
     const deleteDraft = async () => {
         if (!activeDraftId) return
-        if (!confirm('確定要永久刪除這份草稿與上傳的原檔嗎？此動作無法復原。')) return
+        const accepted = await confirm({
+            title: '永久刪除目前草稿？',
+            description: '這會同時刪除草稿與上傳的原始檔案，而且無法復原。',
+            confirmLabel: '永久刪除',
+            tone: 'danger',
+        })
+        if (!accepted) return
 
         setDeleting(true)
         try {
@@ -546,7 +560,11 @@ export function AuditWorkstation() {
             removeDraftFromView(activeDraftId)
         } catch (err) {
             const msg = err instanceof ApiClientError ? err.message : '刪除草稿失敗'
-            alert(msg)
+            notify({
+                tone: 'error',
+                title: '刪除草稿失敗',
+                description: msg,
+            })
         } finally {
             setDeleting(false)
         }
@@ -608,7 +626,12 @@ export function AuditWorkstation() {
 
     const batchPublish = async () => {
         if (selectedDraftIds.size === 0) return
-        if (!confirm(`確定要批次匯入 ${selectedDraftIds.size} 份草稿？`)) return
+        const accepted = await confirm({
+            title: `批次匯入 ${selectedDraftIds.size} 份草稿？`,
+            description: '系統會依序將目前選取的草稿發布到正式題庫。',
+            confirmLabel: '批次匯入',
+        })
+        if (!accepted) return
 
         setBatchProcessing(true)
         setSaveMsg(null)
@@ -635,7 +658,13 @@ export function AuditWorkstation() {
 
     const batchDelete = async () => {
         if (selectedDraftIds.size === 0) return
-        if (!confirm(`確定要永久刪除 ${selectedDraftIds.size} 份草稿？此動作無法復原。`)) return
+        const accepted = await confirm({
+            title: `永久刪除 ${selectedDraftIds.size} 份草稿？`,
+            description: '此動作無法復原，會直接移除所有選取草稿。',
+            confirmLabel: '批次刪除',
+            tone: 'danger',
+        })
+        if (!accepted) return
 
         setBatchProcessing(true)
         setSaveMsg(null)

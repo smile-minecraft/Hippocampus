@@ -1,18 +1,32 @@
 import type { Metadata } from 'next'
-import { Figtree, Noto_Sans_TC } from 'next/font/google'
+import localFont from 'next/font/local'
 import { AppProviders } from '@/components/providers/AppProviders'
 import './globals.css'
 
-const figtree = Figtree({
-  subsets: ['latin'],
-  variable: '--font-figtree',
-  display: 'swap',
-})
-
-const notoSansTC = Noto_Sans_TC({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '700'],
-  variable: '--font-noto-sans-tc',
+const sourceHanSerif = localFont({
+  src: [
+    {
+      path: './fonts/NotoSerifTC-Regular.ttf',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: './fonts/NotoSerifTC-Medium.ttf',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: './fonts/NotoSerifTC-SemiBold.ttf',
+      weight: '600',
+      style: 'normal',
+    },
+    {
+      path: './fonts/NotoSerifTC-Bold.ttf',
+      weight: '700',
+      style: 'normal',
+    },
+  ],
+  variable: '--font-source-han-serif',
   display: 'swap',
 })
 
@@ -61,7 +75,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className={`${figtree.variable} ${notoSansTC.variable} font-sans antialiased bg-bg-base text-text-base transition-colors duration-300`}>
+      <body className={`${sourceHanSerif.variable} font-sans antialiased bg-bg-base text-text-base transition-colors duration-300`}>
         <AppProviders>
           {children}
         </AppProviders>

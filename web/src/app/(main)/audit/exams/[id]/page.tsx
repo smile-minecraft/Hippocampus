@@ -6,11 +6,15 @@ import { fetchAdminExamQuestions, bulkDeleteQuestions, bulkTransferQuestions, up
 import { useQuestionSelection } from '@/lib/stores/useQuestionSelection'
 import { Loader2, Trash2, ArrowRightLeft, Square, CheckSquare, Pencil, X, Sparkles, Tags, Tag, Plus, Minus } from 'lucide-react'
 import Link from 'next/link'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, type FormEvent } from 'react'
 import { updateAdminQuestion, deleteAdminQuestion, type Question } from '@/lib/apiClient'
 import { LatexText } from '@/components/ui/LatexText'
 import { GroupedTagMultiSelect } from '@/components/quiz/GroupedTagMultiSelect'
 import { formatQuestion } from '@/lib/validation/question-formatter'
+import { useFeedback } from '@/components/ui/FeedbackProvider'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { Button } from '@/components/ui/Button'
 
 function getCsrfToken(): string {
     if (typeof document === 'undefined') return ''
@@ -22,6 +26,7 @@ export default function ExamDetailPage() {
     const params = useParams()
     const queryClient = useQueryClient()
     const id = params.id as string
+    const { confirm, notify } = useFeedback()
 
     // Parse the display name from URL (year_examType)
     const [yearStr, ...examTypeParts] = id.split("_")
@@ -89,9 +94,9 @@ export default function ExamDetailPage() {
             queryClient.invalidateQueries({ queryKey: ['admin-exams', id] })
             queryClient.invalidateQueries({ queryKey: ['admin-exams'] }) // Also invalidate list view
             clearSelection()
-            alert('刪除成功')
+            notify({ tone: 'success', title: '批次刪除完成', description: '所選題目已從題庫中移除。' })
         },
-        onError: (err) => alert(`刪除失敗: ${err.message}`)
+        onError: (err) => notify({ tone: 'error', title: '批次刪除失敗', description: err.message })
     })
 
     // Bulk Transfer Mutation 
@@ -106,9 +111,9 @@ export default function ExamDetailPage() {
             queryClient.invalidateQueries({ queryKey: ['admin-exams'] })
             clearSelection()
             setIsTransferModalOpen(false)
-            alert('轉移成功')
+            notify({ tone: 'success', title: '轉移成功', description: '所選題目已移至新的卷別。' })
         },
-        onError: (err) => alert(`轉移失敗: ${err.message}`)
+        onError: (err) => notify({ tone: 'error', title: '轉移失敗', description: err.message })
     })
 
     const updateMutation = useMutation({
@@ -116,17 +121,18 @@ export default function ExamDetailPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-exams', id] })
             setEditingQuestion(null)
+            notify({ tone: 'success', title: '題目已更新' })
         },
-        onError: (err) => alert(`更新失敗: ${err.message}`)
+        onError: (err) => notify({ tone: 'error', title: '更新失敗', description: err.message })
     })
 
     const individualDeleteMutation = useMutation({
         mutationFn: (questionId: string) => deleteAdminQuestion(questionId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-exams', id] })
-            alert('題目已刪除')
+            notify({ tone: 'success', title: '題目已刪除' })
         },
-        onError: (err) => alert(`刪除失敗: ${err.message}`)
+        onError: (err) => notify({ tone: 'error', title: '刪除失敗', description: err.message })
     })
 
     const updateTagsMutation = useMutation({
@@ -134,7 +140,7 @@ export default function ExamDetailPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['admin-exams', id] })
         },
-        onError: (err) => alert(`標籤更新失敗: ${err.message}`)
+        onError: (err) => notify({ tone: 'error', title: '標籤更新失敗', description: err.message })
     })
 
     const batchUpdateTagsMutation = useMutation({
@@ -148,22 +154,37 @@ export default function ExamDetailPage() {
             clearSelection()
             setIsBatchTagModalOpen(false)
             setSelectedTagSlugsForBatch([])
-            alert(`${batchTagMode === 'add' ? '添加' : '移除'}標籤成功，共影響 ${data.affectedCount} 題`)
+            notify({
+                tone: 'success',
+                title: `${batchTagMode === 'add' ? '添加' : '移除'}標籤成功`,
+                description: `共影響 ${data.affectedCount} 題。`,
+            })
         },
-        onError: (err) => alert(`批量標籤操作失敗: ${err.message}`)
+        onError: (err) => notify({ tone: 'error', title: '批量標籤操作失敗', description: err.message })
     })
 
-    const handleBulkDelete = () => {
+    const handleBulkDelete = async () => {
         if (selectedCount === 0) return
-        if (confirm(`確定要刪除這 ${selectedCount} 題嗎？`)) {
-            deleteMutation.mutate(Array.from(selectedIds))
-        }
+        const accepted = await confirm({
+            title: `刪除這 ${selectedCount} 題？`,
+            description: '這個操作會直接從題庫移除選取題目，建議先確認是否真的不再需要。',
+            confirmLabel: '批次刪除',
+            tone: 'danger',
+        })
+
+        if (!accepted) return
+
+        deleteMutation.mutate(Array.from(selectedIds))
     }
 
-    const handleBulkTransferSubmit = (e: React.FormEvent) => {
+    const handleBulkTransferSubmit = (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         if (!transferYear && !transferExamType) {
-            alert("請至少輸入新年份或新分類名稱")
+            notify({
+                tone: 'warning',
+                title: '請至少輸入一項轉移條件',
+                description: '年份與分類名稱至少要提供其中一項，才能建立新的卷別。',
+            })
             return
         }
         transferMutation.mutate()
@@ -171,79 +192,94 @@ export default function ExamDetailPage() {
 
     return (
         <>
-            <main className="min-h-screen bg-bg-base px-4 py-6 transition-colors duration-300">
-                <div className="max-w-6xl mx-auto space-y-6">
-                    <header className="flex justify-between items-center space-y-1">
-                        <div>
-                            <h1 className="text-2xl font-heading font-bold text-text-base">
-                                題庫明細: {title}
-                            </h1>
-                            <p className="text-sm text-text-muted mt-1">
-                                已選取 {selectedCount} 題
-                            </p>
-                        </div>
-                        <div className="flex gap-4 items-center">
-                            {selectedCount > 0 && (
-                                <div className="flex gap-2 animate-in fade-in slide-in-from-right-4">
-                                    <button
-                                        onClick={() => {
-                                            setBatchTagMode('add')
-                                            setSelectedTagSlugsForBatch([])
-                                            setIsBatchTagModalOpen(true)
-                                        }}
-                                        className="inline-flex items-center px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 rounded-lg transition-colors text-sm font-medium"
-                                    >
-                                        <Plus className="w-4 h-4 mr-2" />
-                                        批量添加標籤
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setBatchTagMode('remove')
-                                            setSelectedTagSlugsForBatch([])
-                                            setIsBatchTagModalOpen(true)
-                                        }}
-                                        className="inline-flex items-center px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 rounded-lg transition-colors text-sm font-medium"
-                                    >
-                                        <Minus className="w-4 h-4 mr-2" />
-                                        批量移除標籤
-                                    </button>
-                                    <button
-                                        onClick={() => setIsTransferModalOpen(true)}
-                                        className="inline-flex items-center px-3 py-2 bg-primary-base hover:bg-primary-hover text-white rounded-lg transition-colors text-sm font-medium shadow-sm"
-                                    >
-                                        <ArrowRightLeft className="w-4 h-4 mr-2" />
-                                        分割 / 轉移卷別
-                                    </button>
-                                    <button
-                                        onClick={handleBulkDelete}
-                                        disabled={deleteMutation.isPending}
-                                        className="inline-flex items-center px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors text-sm font-medium"
-                                    >
-                                        {deleteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                                        批次刪除
-                                    </button>
-                                </div>
-                            )}
-                            <Link
-                                href="/audit/exams"
-                                className="text-sm font-medium text-text-muted hover:text-primary-base"
-                            >
-                                ← 返回題庫列表
-                            </Link>
-                        </div>
-                    </header>
+            <div className="space-y-6">
+                <PageHeader
+                    eyebrow="Audit / Exam Detail"
+                    title={`題庫明細：${title}`}
+                    description="這裡保留工作站密度，但表面系統已統一成 Rose Pine shell。批次操作會走共享確認流程，不再跳出原生 alert。"
+                    actions={(
+                        <Link href="/audit/exams" className="btn-secondary">
+                            返回題庫列表
+                        </Link>
+                    )}
+                    meta={(
+                        <>
+                            <span className="pill">總共 {questions?.length ?? 0} 題</span>
+                            <span className="pill">已選取 {selectedCount} 題</span>
+                        </>
+                    )}
+                />
 
-                    {isLoading ? (
-                        <div className="flex justify-center items-center py-20 text-text-muted">
-                            <Loader2 className="w-8 h-8 animate-spin" />
-                            <span className="ml-3">載入題目中...</span>
+                {selectedCount > 0 ? (
+                    <SectionCard
+                        title="批次操作"
+                        description="這些操作會套用到目前所有已選題目。"
+                        actions={(
+                            <>
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => {
+                                        setBatchTagMode('add')
+                                        setSelectedTagSlugsForBatch([])
+                                        setIsBatchTagModalOpen(true)
+                                    }}
+                                >
+                                    <Plus className="size-4" />
+                                    批量添加標籤
+                                </Button>
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => {
+                                        setBatchTagMode('remove')
+                                        setSelectedTagSlugsForBatch([])
+                                        setIsBatchTagModalOpen(true)
+                                    }}
+                                >
+                                    <Minus className="size-4" />
+                                    批量移除標籤
+                                </Button>
+                                <Button variant="secondary" size="sm" onClick={() => setIsTransferModalOpen(true)}>
+                                    <ArrowRightLeft className="size-4" />
+                                    分割 / 轉移卷別
+                                </Button>
+                                <Button
+                                    variant="danger"
+                                    size="sm"
+                                    onClick={() => void handleBulkDelete()}
+                                    isLoading={deleteMutation.isPending}
+                                >
+                                    {!deleteMutation.isPending ? <Trash2 className="size-4" /> : null}
+                                    {!deleteMutation.isPending ? '批次刪除' : null}
+                                </Button>
+                            </>
+                        )}
+                    >
+                        <p className="text-sm leading-7 text-text-muted">
+                            已選取 <span className="font-semibold text-text-base">{selectedCount}</span> 題，可直接做標籤整理、卷別轉移或刪除。
+                        </p>
+                    </SectionCard>
+                ) : null}
+
+                {isLoading ? (
+                    <div className="flex items-center justify-center py-20 text-text-muted">
+                        <Loader2 className="size-8 animate-spin" />
+                        <span className="ml-3">載入題目中...</span>
+                    </div>
+                ) : questions?.length === 0 ? (
+                    <SectionCard title="目前沒有題目">
+                        <div className="rounded-[24px] border border-dashed border-border-base bg-bg-surface px-6 py-16 text-center text-sm text-text-muted">
+                            此考卷內尚無題目，或題目都已被軟刪除。
                         </div>
-                    ) : questions?.length === 0 ? (
-                        <div className="border-2 border-dashed border-border-base rounded-2xl flex flex-col items-center justify-center py-24 text-text-muted">
-                            <p>此考卷內尚無題目，或皆已被軟刪除</p>
-                        </div>
-                    ) : (
-                        <div className="bg-bg-surface border border-border-base rounded-xl overflow-hidden shadow-sm">
+                    </SectionCard>
+                ) : (
+                    <SectionCard
+                        title="題目列表"
+                        description="可逐題編輯、刪除，或先用勾選做批次整理。"
+                        className="!p-0 overflow-hidden"
+                    >
+                        <div className="bg-bg-surface">
                             <div className="flex items-center p-4 border-b border-border-base bg-bg-base/50">
                                 <button onClick={handleToggleAll} className="mr-4 text-text-muted hover:text-primary-base">
                                     {isAllSelected ? <CheckSquare className="w-5 h-5 text-primary-base" /> : <Square className="w-5 h-5" />}
@@ -274,7 +310,7 @@ export default function ExamDetailPage() {
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }}
+                                                        onClick={(e) => { e.stopPropagation(); setEditingQuestion(q) }}
                                                         className="p-1.5 hover:bg-primary-base/10 text-text-muted hover:text-primary-base rounded-lg transition-colors"
                                                         title="編輯題目內容"
                                                     >
@@ -282,8 +318,19 @@ export default function ExamDetailPage() {
                                                     </button>
                                                     <button
                                                         onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (confirm('確定要刪除此題目嗎？')) individualDeleteMutation.mutate(q.id);
+                                                            e.stopPropagation()
+                                                            void (async () => {
+                                                                const accepted = await confirm({
+                                                                    title: '刪除這題？',
+                                                                    description: '這個操作會直接影響題庫內容，刪除後需要重新匯入才能恢復。',
+                                                                    confirmLabel: '刪除此題',
+                                                                    tone: 'danger',
+                                                                })
+
+                                                                if (accepted) {
+                                                                    individualDeleteMutation.mutate(q.id)
+                                                                }
+                                                            })()
                                                         }}
                                                         className="p-1.5 hover:bg-red-500/10 text-text-muted hover:text-red-500 rounded-lg transition-colors"
                                                         title="刪除此題"
@@ -307,9 +354,9 @@ export default function ExamDetailPage() {
                                 ))}
                             </div>
                         </div>
-                    )}
-                </div>
-            </main>
+                    </SectionCard>
+                )}
+            </div>
 
             {/* Transfer Modal */}
             {isTransferModalOpen && (
@@ -450,6 +497,7 @@ export default function ExamDetailPage() {
 }
 
 function EditQuestionModal({ question, onClose, onSave, isSaving, onTagsChange, isUpdatingTags }: { question: Question, onClose: () => void, onSave: (p: Partial<Question>) => void, isSaving: boolean, onTagsChange: (add: string[], remove: string[]) => void, isUpdatingTags: boolean }) {
+    const { notify } = useFeedback()
     const [stem, setStem] = useState(question.stem)
     const [explanation, setExplanation] = useState(question.explanation || '')
     const [options, setOptions] = useState(question.options as Record<string, string>)
@@ -458,9 +506,13 @@ function EditQuestionModal({ question, onClose, onSave, isSaving, onTagsChange, 
     const [selectedTagSlugs, setSelectedTagSlugs] = useState<string[]>(question.tags.map(t => t.slug))
     const [activeTab, setActiveTab] = useState<'content' | 'tags'>('content')
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault()
+    const handleSave = () => {
         onSave({ stem, explanation, options, answer })
+    }
+
+    const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        handleSave()
     }
 
     const generateExplanation = async () => {
@@ -481,10 +533,14 @@ function EditQuestionModal({ question, onClose, onSave, isSaving, onTagsChange, 
             if (data.ok && Array.isArray(data.data?.explanations) && data.data.explanations[0]) {
                 setExplanation(data.data.explanations[0])
             } else {
-                alert(`生成詳解失敗: ${data.message || '未知錯誤'}`)
+                notify({
+                    tone: 'error',
+                    title: '生成詳解失敗',
+                    description: data.message || '未知錯誤',
+                })
             }
         } catch {
-            alert('生成詳解失敗')
+            notify({ tone: 'error', title: '生成詳解失敗' })
         } finally {
             setGeneratingExplanation(false)
         }
@@ -614,14 +670,9 @@ function EditQuestionModal({ question, onClose, onSave, isSaving, onTagsChange, 
                         關閉
                     </button>
                     {activeTab === 'content' && (
-                        <button
-                            onClick={handleSubmit}
-                            disabled={isSaving}
-                            className="btn-primary !px-8 !py-2.5 text-sm gap-2"
-                        >
-                            {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                            儲存變更
-                        </button>
+                        <Button onClick={handleSave} isLoading={isSaving} className="!px-8 !py-2.5 text-sm">
+                            {!isSaving ? '儲存變更' : null}
+                        </Button>
                     )}
                 </footer>
             </div>

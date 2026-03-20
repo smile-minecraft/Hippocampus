@@ -18,7 +18,7 @@
  *   - Graceful shutdown with SIGTERM/SIGINT handling
  */
 
-import { Worker, type Job, Queue, UnrecoverableError } from "bullmq";
+import { Worker, type Job, UnrecoverableError } from "bullmq";
 import { log, setLogSink } from "../lib/logger";
 import {
     bulkhead,
@@ -271,6 +271,28 @@ async function reportProgress(
     });
 }
 
+function readExplanationProgress(progress: unknown): Pick<ExplanationJobProgress, "done" | "total" | "cached" | "partialResults"> {
+    if (progress && typeof progress === "object" && !Array.isArray(progress)) {
+        const candidate = progress as Partial<ExplanationJobProgress>;
+        return {
+            done: typeof candidate.done === "number" ? candidate.done : 0,
+            total: typeof candidate.total === "number" ? candidate.total : 0,
+            cached: typeof candidate.cached === "number" ? candidate.cached : 0,
+            partialResults:
+                candidate.partialResults && typeof candidate.partialResults === "object"
+                    ? candidate.partialResults
+                    : {},
+        };
+    }
+
+    return {
+        done: 0,
+        total: 0,
+        cached: 0,
+        partialResults: {},
+    };
+}
+
 /**
  * Check if job is paused or canceled. If paused, wait until resumed.
  * Throws error if canceled.
@@ -288,13 +310,14 @@ async function checkPauseAndCancel(
     // Check for pause - wait until resumed
     if (job.data._paused) {
         log.info("explanation-worker", `Job ${job.id} paused, waiting for resume...`, { traceId, jobId: job.id });
+        const progress = readExplanationProgress(job.progress);
         
         // Update progress to show paused state
         await reportProgress(job, {
-            done: job.progress?.done || 0,
-            total: job.progress?.total || 0,
-            cached: job.progress?.cached || 0,
-            partialResults: job.progress?.partialResults || {},
+            done: progress.done,
+            total: progress.total,
+            cached: progress.cached,
+            partialResults: progress.partialResults,
             message: "已暫停，等待恢復...",
         });
 
@@ -677,7 +700,6 @@ worker.on("stalled", (jobId) => {
 });
 
 // 5. Poll queue counts for TUI
-const explanationQueue = new Queue(QUEUE_NAMES.EXPLANATION, { connection: redisConnection });
 const QUEUE_POLL_INTERVAL_MS = 5_000;
 
 async function pollQueueCounts(): Promise<void> {

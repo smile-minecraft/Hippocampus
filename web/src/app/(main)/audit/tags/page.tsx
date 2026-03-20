@@ -5,9 +5,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2, AlertTriangle, Edit2, Merge, Trash2 } from "lucide-react";
 import { fetchAdminTags, createAdminTag, updateAdminTag, deleteAdminTag, mergeAdminTags, AdminTagListResponse } from "@/lib/apiClient";
 import { CreateTagPayload } from "@/lib/schemas";
+import { useFeedback } from "@/components/ui/FeedbackProvider";
 
 export default function TagsManagerPage() {
     const queryClient = useQueryClient();
+    const { confirm } = useFeedback();
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState("");
     const [dimension, setDimension] = useState("");
@@ -233,7 +235,15 @@ export default function TagsManagerPage() {
                                                     <Merge className="h-4 w-4" />
                                                 </button>
                                                 <button
-                                                    onClick={() => { if (confirm(`確定刪除標籤 ${tag.name}？關聯將被抹除！`)) deleteMutation.mutate(tag.id) }}
+                                                    onClick={async () => {
+                                                        const accepted = await confirm({
+                                                            title: `刪除標籤 ${tag.name}？`,
+                                                            description: "所有既有關聯都會被移除，且此操作無法復原。",
+                                                            confirmLabel: "刪除標籤",
+                                                            tone: "danger",
+                                                        });
+                                                        if (accepted) deleteMutation.mutate(tag.id);
+                                                    }}
                                                     className="p-1.5 hover:bg-red-500/20 hover:text-red-400 rounded transition" title="強制刪除"
                                                 >
                                                     <Trash2 className="h-4 w-4" />

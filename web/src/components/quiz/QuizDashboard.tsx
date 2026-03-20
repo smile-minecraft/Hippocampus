@@ -1,14 +1,16 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
-import { Button } from '@/components/ui/Button'
-import { fetchQuizStats } from '@/lib/apiClient'
-import { TagsResponse, Tag, TagDimension } from '@/types'
-import { Play, Settings2, History, Target, Flame, BookOpen } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { BookOpen, History, Play, Settings2, Target, Flame, type LucideIcon } from 'lucide-react'
+import { fetchQuizStats } from '@/lib/apiClient'
+import { type Tag, type TagDimension, type TagsResponse } from '@/types'
+import { Button } from '@/components/ui/Button'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { cn } from '@/lib/cn'
 
 interface QuizDashboardProps {
     tagsData: TagsResponse
@@ -20,7 +22,6 @@ export function QuizDashboard({ tagsData }: QuizDashboardProps) {
     const [limit, setLimit] = useState<number>(20)
     const [difficulty, setDifficulty] = useState<number | null>(null)
 
-    // Fetch user stats (graceful — renders without stats if user is not authenticated)
     const { data: stats } = useQuery({
         queryKey: ['quiz-stats'],
         queryFn: fetchQuizStats,
@@ -28,42 +29,47 @@ export function QuizDashboard({ tagsData }: QuizDashboardProps) {
         staleTime: 60_000,
     })
 
-    const toggleTag = (slug: string) => {
-        setSelectedTags(prev =>
-            prev.includes(slug) ? prev.filter(t => t !== slug) : [...prev, slug]
+    function toggleTag(slug: string) {
+        setSelectedTags((previous) =>
+            previous.includes(slug)
+                ? previous.filter((tag) => tag !== slug)
+                : [...previous, slug],
         )
     }
 
-    const startQuiz = () => {
+    function startQuiz() {
         const params = new URLSearchParams()
         if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
         if (limit) params.set('limit', limit.toString())
         if (difficulty) params.set('difficulty', difficulty.toString())
-
         router.push(`/quiz/engine?${params.toString()}`)
     }
 
-    // Render tag groups safely based on dimension keys
-    const renderTagGroup = (title: string, dimension: TagDimension) => {
+    function renderTagGroup(title: string, dimension: TagDimension) {
         const tags = tagsData.grouped[dimension]
         if (!tags || tags.length === 0) return null
 
         return (
             <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-text-muted px-1">{title}</h3>
+                <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-heading text-lg font-semibold text-text-base">{title}</h3>
+                    <span className="text-xs uppercase tracking-[0.24em] text-text-subtle">{tags.length} tags</span>
+                </div>
                 <div className="flex flex-wrap gap-2">
                     {tags.map((tag: Tag) => {
                         const isSelected = selectedTags.includes(tag.slug)
                         return (
                             <button
                                 key={tag.slug}
+                                type="button"
                                 onClick={() => toggleTag(tag.slug)}
-                                className={`
-                                    px-3 py-1.5 text-sm font-medium rounded-full transition-all duration-200 border
-                                    ${isSelected
-                                        ? 'bg-primary-base/10 text-primary-base border-primary-base/30 shadow-sm'
-                                        : 'bg-bg-subtle text-text-base border-border-base hover:border-border-hover hover:bg-bg-muted'}
-                                `}
+                                aria-pressed={isSelected}
+                                className={cn(
+                                    'rounded-full border px-3 py-2 text-sm font-medium transition-colors',
+                                    isSelected
+                                        ? 'border-primary-base bg-primary-muted text-text-base'
+                                        : 'border-border-base bg-bg-surface text-text-muted hover:border-border-hover hover:bg-surface-muted hover:text-text-base',
+                                )}
                             >
                                 {tag.name}
                             </button>
@@ -75,125 +81,117 @@ export function QuizDashboard({ tagsData }: QuizDashboardProps) {
     }
 
     return (
-        <div className="w-full max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <header className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <h1 className="text-3xl font-heading font-bold text-text-base tracking-tight flex items-center gap-2">
-                        <Settings2 className="size-7 text-primary-base" />
-                        自訂測驗
-                    </h1>
+        <div className="space-y-6">
+            <PageHeader
+                eyebrow="Quiz workspace"
+                title="先用閱讀式設定頁收斂範圍，再進入沉浸式作答。"
+                description="新版 quiz dashboard 保留原本的題數、難度與標籤邏輯，但把它們整理成更像 Notion block 的設定體驗。"
+                actions={(
                     <Link href="/quiz/history">
-                        <Button variant="ghost" size="sm">
+                        <Button variant="secondary" size="sm">
                             <History className="size-4" />
                             作答紀錄
                         </Button>
                     </Link>
-                </div>
-                <p className="text-text-muted">選擇你想要複習的範圍與題數設定，系統將動態為你組出最佳的試卷。</p>
-            </header>
+                )}
+                meta={(
+                    <>
+                        <span className="pill">已選 {selectedTags.length} 個範圍</span>
+                        <span className="pill">題數 {limit}</span>
+                        {difficulty ? <span className="pill">難度 {difficulty}</span> : null}
+                    </>
+                )}
+            />
 
-            {/* Personal stats summary */}
-            {stats && stats.totalAttempts > 0 && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="card p-4 text-center space-y-1">
-                        <Target className="size-5 mx-auto text-primary-base" />
-                        <div className="text-2xl font-bold font-mono text-text-base">{stats.accuracy}%</div>
-                        <div className="text-xs text-text-muted">正確率</div>
-                    </div>
-                    <div className="card p-4 text-center space-y-1">
-                        <BookOpen className="size-5 mx-auto text-primary-base" />
-                        <div className="text-2xl font-bold font-mono text-text-base">{stats.totalAttempts}</div>
-                        <div className="text-xs text-text-muted">總作答數</div>
-                    </div>
-                    <div className="card p-4 text-center space-y-1">
-                        <Flame className="size-5 mx-auto text-amber-500" />
-                        <div className="text-2xl font-bold font-mono text-text-base">{stats.streakCurrent}</div>
-                        <div className="text-xs text-text-muted">連對紀錄</div>
-                    </div>
-                    <div className="card p-4 text-center space-y-1">
-                        <History className="size-5 mx-auto text-red-500" />
-                        <div className="text-2xl font-bold font-mono text-text-base">{stats.dueForReview}</div>
-                        <div className="text-xs text-text-muted">待複習</div>
-                    </div>
-                </div>
-            )}
+            {stats && stats.totalAttempts > 0 ? (
+                <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {[
+                        { label: '正確率', value: `${stats.accuracy}%`, icon: Target, toneClass: 'text-primary-base' },
+                        { label: '總作答數', value: String(stats.totalAttempts), icon: BookOpen, toneClass: 'text-secondary-base' },
+                        { label: '連對紀錄', value: String(stats.streakCurrent), icon: Flame, toneClass: 'text-warning-base' },
+                        { label: '待複習', value: String(stats.dueForReview), icon: History, toneClass: 'text-danger-base' },
+                    ].map(({ label, value, icon: Icon, toneClass }: { label: string; value: string; icon: LucideIcon; toneClass: string }) => (
+                        <SectionCard key={String(label)} className="space-y-3">
+                            <div className={cn('inline-flex size-11 items-center justify-center rounded-[18px] bg-primary-muted', toneClass)}>
+                                <Icon className="size-5" />
+                            </div>
+                            <div>
+                                <p className="text-sm text-text-muted">{label}</p>
+                                <p className="mt-2 font-heading text-3xl font-bold text-text-base">{value}</p>
+                            </div>
+                        </SectionCard>
+                    ))}
+                </section>
+            ) : null}
 
-            <section className="card p-6 md:p-8 space-y-8 bg-surface-base shadow-sm border border-border-base">
-
-                {/* 題數與難度設定 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-3">
-                        <h3 className="text-sm font-semibold text-text-muted">測驗題數</h3>
-                        <div className="flex items-center gap-3">
-                            {[10, 20, 50, 100].map(n => (
-                                <button
-                                    key={n}
-                                    onClick={() => setLimit(n)}
-                                    className={`
-                                        flex-1 py-2 rounded-lg text-sm font-medium border transition-colors
-                                        ${limit === n
-                                            ? 'bg-text-base text-bg-base border-text-base'
-                                            : 'bg-transparent text-text-muted border-border-base hover:border-text-muted'}
-                                    `}
-                                >
-                                    {n} 題
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        <h3 className="text-sm font-semibold text-text-muted">難度篩選 (選填)</h3>
-                        <div className="flex items-center gap-2">
-                            {[1, 2, 3, 4, 5].map(level => (
-                                <button
-                                    key={level}
-                                    onClick={() => setDifficulty(difficulty === level ? null : level)}
-                                    className={`
-                                        flex-1 py-2 flex justify-center items-center rounded-lg text-sm transition-colors border
-                                        ${difficulty === level
-                                            ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
-                                            : 'bg-transparent text-text-muted border-border-base hover:border-text-muted'}
-                                    `}
-                                    title={`難度 ${level}`}
-                                >
-                                    {'★'.repeat(level)}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="divider" />
-
-                {/* 標籤過濾區域 */}
-                <div className="space-y-6">
-                    {renderTagGroup('基礎學科', 'ACADEMIC')}
-                    {renderTagGroup('臨床系統', 'ORGAN')}
-                    {renderTagGroup('考試類別', 'EXAM_CATEGORY')}
-                    {renderTagGroup('題型與狀態', 'META')}
-                </div>
-            </section>
-
-            {/* 底部按鈕 */}
-            <motion.div
-                className="flex items-center justify-between sticky bottom-6 p-4 rounded-2xl bg-surface-base/80 backdrop-blur border border-border-default shadow-lg"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.1 }}
+            <SectionCard
+                title="測驗設定"
+                description="先用 block 方式選題數與難度，接著用標籤收斂題目範圍。"
+                actions={(
+                    <Button onClick={startQuiz}>
+                        <Play className="size-4" />
+                        開始測驗
+                    </Button>
+                )}
             >
-                <div className="text-sm text-text-muted font-medium">
-                    已選擇 <span className="font-bold text-primary-base">{selectedTags.length}</span> 個範圍，共 <span className="font-bold text-text-base">{limit}</span> 題
+                <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+                    <div className="space-y-6">
+                        <div className="space-y-3">
+                            <div className="inline-flex items-center gap-2 text-sm font-semibold text-text-base">
+                                <Settings2 className="size-4 text-primary-base" />
+                                測驗題數
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[10, 20, 50, 100].map((value) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() => setLimit(value)}
+                                        className={cn(
+                                            'rounded-2xl border px-4 py-3 text-sm font-semibold transition-colors',
+                                            limit === value
+                                                ? 'border-primary-base bg-primary-muted text-text-base'
+                                                : 'border-border-base bg-bg-surface text-text-muted hover:border-border-hover hover:text-text-base',
+                                        )}
+                                    >
+                                        {value} 題
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <p className="text-sm font-semibold text-text-base">難度篩選</p>
+                            <div className="grid grid-cols-5 gap-2">
+                                {[1, 2, 3, 4, 5].map((level) => (
+                                    <button
+                                        key={level}
+                                        type="button"
+                                        title={`難度 ${level}`}
+                                        aria-pressed={difficulty === level}
+                                        onClick={() => setDifficulty(difficulty === level ? null : level)}
+                                        className={cn(
+                                            'rounded-2xl border px-2 py-3 text-center text-sm transition-colors',
+                                            difficulty === level
+                                                ? 'border-secondary-base bg-secondary-base/15 text-text-base'
+                                                : 'border-border-base bg-bg-surface text-text-muted hover:border-border-hover hover:text-text-base',
+                                        )}
+                                    >
+                                        {'★'.repeat(level)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        {renderTagGroup('基礎學科', 'ACADEMIC')}
+                        {renderTagGroup('臨床系統', 'ORGAN')}
+                        {renderTagGroup('考試類別', 'EXAM_CATEGORY')}
+                        {renderTagGroup('題型與狀態', 'META')}
+                    </div>
                 </div>
-                <Button
-                    size="lg"
-                    className="shadow-sm font-bold tracking-wide"
-                    onClick={startQuiz}
-                >
-                    <Play className="size-4 fill-current mr-1" />
-                    開始測驗
-                </Button>
-            </motion.div>
+            </SectionCard>
         </div>
     )
 }

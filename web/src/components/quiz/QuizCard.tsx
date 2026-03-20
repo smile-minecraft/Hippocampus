@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuizKeyboard } from './useQuizKeyboard'
 import { OptionButton } from './OptionButton'
@@ -274,6 +275,7 @@ interface SessionReviewProps {
 }
 
 function SessionReview({ stats, results, questions, onRestart }: SessionReviewProps) {
+    const router = useRouter()
     const [expandedId, setExpandedId] = useState<string | null>(null)
     const [filter, setFilter] = useState<'all' | 'wrong' | 'skipped'>('all')
 
@@ -347,7 +349,7 @@ function SessionReview({ stats, results, questions, onRestart }: SessionReviewPr
                         <RotateCcw className="size-4" aria-hidden />
                         重新作答
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
+                    <Button variant="ghost" size="sm" onClick={() => router.push('/quiz')}>
                         返回題庫
                     </Button>
                 </div>

@@ -1,41 +1,31 @@
 'use client'
 
-import { useCallback } from 'react'
+import { startTransition, useState, type RefObject } from 'react'
 import { useIntersectionTracker } from './useIntersectionTracker'
 import { RelatedQuestions } from './RelatedQuestions'
 
 interface ArticleReaderProps {
-    content: string          // Rendered HTML sections (from Markdown)
-    initialSlug: string      // Slug of the first section (for SSR prefetch align)
+    content: string
+    initialSlug: string
     sections: Array<{ slug: string; anchor: string }>
 }
 
-/**
- * Two-pane article reading interface.
- *
- * Left: article content, each <section data-slug> observed by IntersectionObserver
- * Right: RelatedQuestions sidebar, updated via non-urgent useTransition
- *
- * The RelatedQuestions component exposes a static `_updateSlug` ref so
- * ArticleReader can trigger updates without prop drilling or shared context.
- */
 export function ArticleReader({ content, initialSlug, sections }: ArticleReaderProps) {
-    // no relatedRef needed — updateSlug is wired via static _updateSlug ref on the component
+    const [activeSlug, setActiveSlug] = useState(initialSlug)
 
-    const handleSectionChange = useCallback((slug: string) => {
-        // Trigger the non-urgent transition inside RelatedQuestions
-        const updater = (RelatedQuestions as unknown as { _updateSlug?: (s: string) => void })._updateSlug
-        updater?.(slug)
-    }, [])
-
-    const { rootRef } = useIntersectionTracker({ onSectionChange: handleSectionChange })
+    const { rootRef } = useIntersectionTracker({
+        onSectionChange: (slug) => {
+            startTransition(() => {
+                setActiveSlug(slug)
+            })
+        },
+    })
 
     return (
-        <div className="flex gap-8 min-h-screen">
-            {/* Left: Article content */}
+        <div className="page-grid-with-rail">
             <article
-                ref={rootRef as React.RefObject<HTMLElement>}
-                className="flex-1 min-w-0 prose prose-invert prose-zinc max-w-none"
+                ref={rootRef as RefObject<HTMLElement>}
+                className="editor-prose min-w-0 rounded-[30px] border border-border-base bg-surface-base px-6 py-8 shadow-elevation-1 backdrop-blur-xl md:px-10"
                 aria-label="知識條目內容"
             >
                 {sections.map(({ slug, anchor }) => (
@@ -44,27 +34,21 @@ export function ArticleReader({ content, initialSlug, sections }: ArticleReaderP
                         data-slug={slug}
                         id={anchor}
                         className="scroll-mt-20"
-                    >
-                        {/* Content is pre-rendered by the Server Component */}
-                    </section>
+                    />
                 ))}
-                {/* Fallback: render raw content if no section breakdown */}
                 <div dangerouslySetInnerHTML={{ __html: content }} />
             </article>
 
-            {/* Right: Related questions sidebar */}
-            <aside
-                className="hidden lg:block w-80 xl:w-96 flex-shrink-0 sticky top-20 self-start max-h-[calc(100vh-5rem)] overflow-y-auto"
-                aria-label="關聯考古題"
-            >
-                <div className="rounded-2xl border border-white/10 bg-white/5 py-4">
-                    <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider px-4 pb-3 border-b border-white/10">
-                        相關歷屆考題
-                    </h2>
-                    <div className="pt-3">
-                        <RelatedQuestions initialSlug={initialSlug} />
+            <aside className="page-rail">
+                <section className="section-card py-4">
+                    <div className="border-b border-border-base px-4 pb-3">
+                        <p className="page-header-eyebrow">Context rail</p>
+                        <h2 className="font-heading text-lg font-semibold text-text-base">關聯考古題</h2>
                     </div>
-                </div>
+                    <div className="pt-3">
+                        <RelatedQuestions activeSlug={activeSlug} />
+                    </div>
+                </section>
             </aside>
         </div>
     )

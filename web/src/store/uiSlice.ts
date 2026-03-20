@@ -43,6 +43,7 @@ export interface UISlice {
     // Actions
     setTheme: (theme: Theme) => void
     toggleSidebar: () => void
+    setSidebarCollapsed: (collapsed: boolean) => void
     setFontScale: (scale: number) => void
     setLLMStatus: (status: LLMStatus) => void
 }
@@ -76,6 +77,11 @@ export const useUIStore = create<UISlice>()(
                 toggleSidebar: () =>
                     set((state) => {
                         state.sidebarCollapsed = !state.sidebarCollapsed
+                    }),
+
+                setSidebarCollapsed: (collapsed) =>
+                    set((state) => {
+                        state.sidebarCollapsed = collapsed
                     }),
 
                 setFontScale: (scale) =>

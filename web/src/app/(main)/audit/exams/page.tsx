@@ -5,9 +5,13 @@ import { fetchAdminExams, deleteAdminExam, type ExamSummary } from '@/lib/apiCli
 import { Loader2, Trash2, FolderEdit } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { useFeedback } from '@/components/ui/FeedbackProvider'
 
 export default function ExamsAdminPage() {
     const queryClient = useQueryClient()
+    const { confirm, notify } = useFeedback()
     const [deletingId, setDeletingId] = useState<string | null>(null)
 
     const { data: exams, isLoading, error } = useQuery<ExamSummary[]>({
@@ -39,7 +43,11 @@ export default function ExamsAdminPage() {
             if (ctx?.previous) {
                 queryClient.setQueryData(['admin-exams'], ctx.previous);
             }
-            alert(`刪除失敗: ${err.message}`)
+            notify({
+                tone: 'error',
+                title: '刪除失敗',
+                description: err.message,
+            })
             setDeletingId(null)
         },
         onSettled: () => {
@@ -49,37 +57,41 @@ export default function ExamsAdminPage() {
         }
     })
 
-    const handleDelete = (exam: ExamSummary) => {
+    const handleDelete = async (exam: ExamSummary) => {
         if (!exam.year || !exam.examType) {
-            alert('此考卷缺少關閉參數，無法整卷刪除。請進入單卷編輯單題刪除。')
+            notify({
+                tone: 'warning',
+                title: '缺少必要參數',
+                description: '此考卷缺少關閉參數，無法整卷刪除。請進入單卷編輯單題刪除。',
+            })
             return
         }
 
-        if (confirm(`確定要刪除「${exam.year} ${exam.examType}」整份考卷嗎？\n(這會將 ${exam.questionCount} 題標記為已刪除，但保留刷題歷史)`)) {
-            setDeletingId(`${exam.year}-${exam.examType}`)
-            deleteMutation.mutate({ year: exam.year, examType: exam.examType })
-        }
+        const accepted = await confirm({
+            title: `刪除「${exam.year} ${exam.examType}」整份考卷？`,
+            description: `這會將 ${exam.questionCount} 題標記為已刪除，但保留刷題歷史。`,
+            confirmLabel: '刪除考卷',
+            tone: 'danger',
+        })
+
+        if (!accepted) return
+
+        setDeletingId(`${exam.year}-${exam.examType}`)
+        deleteMutation.mutate({ year: exam.year, examType: exam.examType })
     }
 
     return (
-        <main className="min-h-screen bg-bg-base px-4 py-6 transition-colors duration-300">
-                <div className="max-w-5xl mx-auto space-y-6">
-                    <header className="flex justify-between items-center space-y-1">
-                        <div>
-                            <h1 className="text-2xl font-heading font-bold text-text-base">
-                                題庫管理中心
-                            </h1>
-                            <p className="text-sm text-text-muted mt-1">
-                                您可以在此檢視、刪除或重新分配批次考卷
-                            </p>
-                        </div>
-                        <Link
-                            href="/audit"
-                            className="text-sm font-medium text-primary-base hover:underline"
-                        >
-                            ← 返回審核工作站
+        <div className="space-y-6">
+                <PageHeader
+                    eyebrow="Audit exams"
+                    title="用編輯式索引管理整卷題目。"
+                    description="這裡保留卷級視角，適合先看批次結構，再進到單卷頁面處理題目細節。"
+                    actions={(
+                        <Link href="/audit" className="text-sm font-medium text-primary-base transition-colors hover:text-primary-hover">
+                            返回審核工作站
                         </Link>
-                    </header>
+                    )}
+                />
 
                     {isLoading ? (
                         <div className="flex justify-center items-center py-20 text-text-muted">
@@ -91,10 +103,10 @@ export default function ExamsAdminPage() {
                             載入失敗: {(error as Error).message}
                         </div>
                     ) : !exams || exams.length === 0 ? (
-                        <div className="border-2 border-dashed border-border-base rounded-2xl flex flex-col items-center justify-center py-24 text-text-muted">
+                        <SectionCard className="border-dashed text-center">
                             <FolderEdit className="w-12 h-12 mb-4 text-border-base" />
                             <p>系統內尚無活躍的題庫考卷</p>
-                        </div>
+                        </SectionCard>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {exams.map((exam, i) => {
@@ -140,7 +152,6 @@ export default function ExamsAdminPage() {
                             })}
                         </div>
                     )}
-                </div>
-        </main>
+        </div>
     )
 }

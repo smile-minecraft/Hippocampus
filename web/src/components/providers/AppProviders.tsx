@@ -3,8 +3,11 @@
 import { type ReactNode } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { getQueryClient } from '@/lib/queryClient'
+import { getAppNavigateEventName, type AppNavigateDetail } from '@/lib/navigation'
 import { useUIStore } from '@/store'
+import { FeedbackProvider } from '@/components/ui/FeedbackProvider'
 
 interface AppProvidersProps {
     children: ReactNode
@@ -28,7 +31,8 @@ export function AppProviders({ children }: AppProvidersProps) {
         <QueryClientProvider client={queryClient}>
             <ZustandRehydrator />
             <ThemeApplicator />
-            {children}
+            <NavigationBridge />
+            <FeedbackProvider>{children}</FeedbackProvider>
         </QueryClientProvider>
     )
 }
@@ -57,6 +61,7 @@ function ZustandRehydrator() {
 
 function ThemeApplicator() {
     const theme = useUIStore((s) => s.theme)
+    const fontSizeScale = useUIStore((s) => s.fontSizeScale)
 
     useEffect(() => {
         const root = document.documentElement
@@ -70,7 +75,33 @@ function ThemeApplicator() {
         root.setAttribute('data-theme', resolvedTheme)
         root.classList.toggle('dark', resolvedTheme === 'dark')
         root.classList.toggle('light', resolvedTheme === 'light')
-    }, [theme])
+        root.style.setProperty('--font-size-scale', String(fontSizeScale))
+    }, [fontSizeScale, theme])
+
+    return null
+}
+
+function NavigationBridge() {
+    const router = useRouter()
+
+    useEffect(() => {
+        const eventName = getAppNavigateEventName()
+
+        const handleNavigate = (event: Event) => {
+            const detail = (event as CustomEvent<AppNavigateDetail>).detail
+            if (!detail?.path) return
+
+            if (detail.replace) {
+                router.replace(detail.path)
+                return
+            }
+
+            router.push(detail.path)
+        }
+
+        window.addEventListener(eventName, handleNavigate)
+        return () => window.removeEventListener(eventName, handleNavigate)
+    }, [router])
 
     return null
 }

@@ -63,10 +63,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             return (
                 <div
                     role="alert"
-                    className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-center space-y-3"
+                    className="notice notice-error space-y-3 p-6 text-center"
                 >
-                    <p className="text-sm text-red-300 font-medium">載入失敗</p>
-                    <p className="text-xs text-red-400/70 font-mono break-all">
+                    <p className="text-sm font-medium text-text-base">載入失敗</p>
+                    <p className="text-xs font-mono break-all text-text-muted">
                         {this.state.error?.message}
                     </p>
                     <Button variant="danger" size="sm" onClick={this.handleReset}>

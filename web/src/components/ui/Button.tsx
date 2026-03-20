@@ -15,13 +15,13 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<ButtonVariant, string> = {
     primary:
-        'bg-cta-base text-white border border-transparent hover:bg-cta-hover focus-visible:ring-cta-base/50',
+        'bg-cta-base text-cta-foreground border border-transparent hover:bg-cta-hover focus-visible:ring-[var(--focus-ring)] shadow-elevation-1',
     secondary:
-        'bg-transparent text-primary-base border-2 border-primary-base hover:bg-primary-base/10 focus-visible:ring-primary-base/50',
+        'bg-surface-base text-text-base border border-border-base hover:bg-surface-muted hover:border-border-hover focus-visible:ring-[var(--focus-ring)] shadow-sm',
     ghost:
-        'text-text-muted hover:text-text-base hover:bg-border-base focus-visible:ring-border-base',
+        'text-text-muted hover:text-text-base hover:bg-bg-surface focus-visible:ring-[var(--focus-ring)]',
     danger:
-        'bg-red-600/90 text-white hover:bg-red-500 focus-visible:ring-red-500/50 border border-transparent',
+        'bg-danger-base text-bg-surface hover:bg-danger-base/90 focus-visible:ring-[var(--focus-ring)] border border-transparent shadow-elevation-1',
 }
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -49,9 +49,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
             aria-busy={isLoading}
             className={cn(
                 'inline-flex items-center justify-center font-medium font-heading',
-                'transition-all duration-250 ease-out will-change-transform',
+                'transition-all duration-200 ease-out',
                 'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base hover:-translate-y-px active:translate-y-0',
-                'disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none',
+                'disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none',
                 variantStyles[variant],
                 sizeStyles[size],
                 className,

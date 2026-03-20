@@ -1,8 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Archive, Tags, Users } from 'lucide-react'
 import { AuditWorkstation } from '@/components/audit/AuditWorkstation'
 import { DocumentUploader } from '@/components/audit/DocumentUploader'
 import { LLMStatusBar } from '@/components/ui/LLMStatusBar'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
 
 export const metadata: Metadata = {
     title: '審核工作站',
@@ -12,52 +15,54 @@ export const metadata: Metadata = {
 export default function AuditPage() {
     return (
         <>
-            <main className="min-h-screen bg-bg-base px-4 py-6 pb-12 transition-colors duration-300">
-                <div className="max-w-7xl mx-auto space-y-6">
-                    <header className="flex justify-between items-center space-y-1">
-                        <div>
-                            <h1 className="text-2xl font-heading font-bold text-text-base">
-                                審核工作站
-                            </h1>
-                            <p className="text-sm text-text-muted">
-                                上傳考卷 → AI 自動辨識 → 人工審核校對 → 匯入題庫
-                            </p>
-                        </div>
-                        <div className="flex gap-3">
-                            <Link
-                                href="/audit/users"
-                                className="inline-flex items-center px-4 py-2 bg-bg-surface border border-border-base hover:bg-bg-base text-text-muted rounded-lg transition-colors text-sm font-medium shadow-sm"
-                            >
-                                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                                </svg>
+            <div className="space-y-6">
+                <PageHeader
+                    eyebrow="Audit Workspace"
+                    title="審核工作站把上傳、裁切、校對與發布接成同一條工作流。"
+                    description="這裡保留高密度操作，但整體排版改成更安靜的 Notion 式節奏，讓大量資訊不再彼此搶焦點。"
+                    actions={(
+                        <>
+                            <Link href="/audit/users" className="btn-secondary">
+                                <Users className="size-4" />
                                 用戶管理
                             </Link>
-                            <Link
-                                href="/audit/tags"
-                                className="inline-flex items-center px-4 py-2 bg-bg-surface border border-border-base hover:bg-bg-base text-text-muted rounded-lg transition-colors text-sm font-medium shadow-sm"
-                            >
-                                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                                </svg>
+                            <Link href="/audit/tags" className="btn-secondary">
+                                <Tags className="size-4" />
                                 標籤管理
                             </Link>
-                            <Link
-                                href="/audit/exams"
-                                className="inline-flex items-center px-4 py-2 bg-primary-base hover:bg-primary-hover text-white rounded-lg transition-colors text-sm font-medium shadow-sm"
-                            >
-                                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                                </svg>
+                            <Link href="/audit/exams" className="btn-primary">
+                                <Archive className="size-4" />
                                 題庫管理中心
                             </Link>
-                        </div>
-                    </header>
+                        </>
+                    )}
+                    meta={(
+                        <>
+                            <span className="pill">上傳考卷</span>
+                            <span className="pill">AI 辨識</span>
+                            <span className="pill">人工校對</span>
+                            <span className="pill">匯入題庫</span>
+                        </>
+                    )}
+                />
 
+                <SectionCard
+                    title="文件入口"
+                    description="先上傳文件，系統會建立解析工作，再進入下方的人工審核流程。"
+                >
                     <DocumentUploader />
-                    <AuditWorkstation />
-                </div>
-            </main>
+                </SectionCard>
+
+                <SectionCard
+                    title="審核工作站"
+                    description="這裡會集中顯示草稿、詳解生成與批次發布相關操作。"
+                    className="!p-0 overflow-hidden"
+                >
+                    <div className="p-0">
+                        <AuditWorkstation />
+                    </div>
+                </SectionCard>
+            </div>
             <LLMStatusBar />
         </>
     )

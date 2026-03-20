@@ -21,6 +21,7 @@ import type {
     Attempt,
     Tag,
 } from '@/types'
+import { buildLoginRedirect, dispatchAppNavigation } from '@/lib/navigation'
 
 export type {
     ApiResponse,
@@ -103,7 +104,10 @@ export async function fetchApi<T>(
         if (typeof window !== 'undefined') {
             const currentPath = window.location.pathname + window.location.search
             if (currentPath !== '/login' && currentPath !== '/register') {
-                window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+                dispatchAppNavigation({
+                    path: buildLoginRedirect(currentPath),
+                    replace: true,
+                })
                 // Throw to prevent further execution
                 throw new ApiClientError('UNAUTHORIZED', '登入已過期，正在重新導向...', 401)
             }

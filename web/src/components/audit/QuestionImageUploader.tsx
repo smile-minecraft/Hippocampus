@@ -2,15 +2,17 @@
 
 import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/Button'
-import { Upload, X, Loader2, Image as ImageIcon } from 'lucide-react'
+import { Loader2, Image as ImageIcon } from 'lucide-react'
 import { fetchPresignedUrl, uploadToMinIO } from '@/lib/apiClient'
 import { log } from '@/lib/logger'
+import { useFeedback } from '@/components/ui/FeedbackProvider'
 
 interface QuestionImageUploaderProps {
     onUploadComplete: (url: string) => void
 }
 
 export function QuestionImageUploader({ onUploadComplete }: QuestionImageUploaderProps) {
+    const { notify } = useFeedback()
     const [isUploading, setIsUploading] = useState(false)
     const [progress, setProgress] = useState<number | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -36,7 +38,10 @@ export function QuestionImageUploader({ onUploadComplete }: QuestionImageUploade
 
         } catch (err) {
             log.error('image-upload', 'Upload failed', { error: err })
-            alert('上傳失敗，請重試')
+            notify({
+                tone: 'error',
+                title: '上傳失敗，請重試',
+            })
         } finally {
             setIsUploading(false)
             setProgress(null)

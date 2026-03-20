@@ -1,8 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { User, Lock, Mail, Calendar, BarChart3, Loader2, Check, AlertCircle } from 'lucide-react'
+import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
+import { BarChart3, Calendar, Check, Loader2, Lock, Mail, User } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SectionCard } from '@/components/ui/SectionCard'
+import { Field } from '@/components/ui/Field'
+import { Button } from '@/components/ui/Button'
 
 interface UserProfile {
     id: string
@@ -13,44 +17,50 @@ interface UserProfile {
     _count: { questionRecords: number }
 }
 
-/**
- * Profile page — Client Component.
- * Shows user info + stats, with password change form.
- */
 export default function ProfilePage() {
     const [user, setUser] = useState<UserProfile | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-
-    // Password change state
+    const [editingName, setEditingName] = useState(false)
+    const [nameValue, setNameValue] = useState('')
+    const [nameLoading, setNameLoading] = useState(false)
     const [currentPassword, setCurrentPassword] = useState('')
     const [newPassword, setNewPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [pwLoading, setPwLoading] = useState(false)
     const [pwMessage, setPwMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-
-    // Name edit state
-    const [editingName, setEditingName] = useState(false)
-    const [nameValue, setNameValue] = useState('')
-    const [nameLoading, setNameLoading] = useState(false)
+    const currentPasswordId = useId()
+    const newPasswordId = useId()
+    const confirmPasswordId = useId()
 
     useEffect(() => {
+        let cancelled = false
+
         async function loadProfile() {
             try {
-                const res = await fetch('/api/users/me', { credentials: 'include' })
-                if (!res.ok) throw new Error('無法載入個人資料')
-                const json = await res.json()
-                if (json.ok) {
+                const response = await fetch('/api/users/me', { credentials: 'include' })
+                if (!response.ok) throw new Error('無法載入個人資料')
+
+                const json = await response.json()
+                if (!cancelled && json.ok) {
                     setUser(json.data)
                     setNameValue(json.data.name ?? '')
                 }
-            } catch (err) {
-                setError(err instanceof Error ? err.message : '載入失敗')
+            } catch (fetchError: unknown) {
+                if (!cancelled) {
+                    setError(fetchError instanceof Error ? fetchError.message : '載入失敗')
+                }
             } finally {
-                setLoading(false)
+                if (!cancelled) {
+                    setLoading(false)
+                }
             }
         }
+
         loadProfile()
+        return () => {
+            cancelled = true
+        }
     }, [])
 
     const getCsrfToken = useCallback(() => {
@@ -61,8 +71,9 @@ export default function ProfilePage() {
     const handleNameSave = useCallback(async () => {
         if (!nameValue.trim()) return
         setNameLoading(true)
+
         try {
-            const res = await fetch('/api/users/me', {
+            const response = await fetch('/api/users/me', {
                 method: 'PATCH',
                 credentials: 'include',
                 headers: {
@@ -71,42 +82,40 @@ export default function ProfilePage() {
                 },
                 body: JSON.stringify({ name: nameValue.trim() }),
             })
-            const json = await res.json()
+
+            const json = await response.json()
             if (json.ok) {
-                setUser(prev => prev ? { ...prev, name: nameValue.trim() } : prev)
+                setUser((previous) => previous ? { ...previous, name: nameValue.trim() } : previous)
                 setEditingName(false)
             }
-        } catch {
-            // Silent fail
         } finally {
             setNameLoading(false)
         }
-    }, [nameValue, getCsrfToken])
+    }, [getCsrfToken, nameValue])
 
-    const handlePasswordChange = useCallback(async (e: React.FormEvent) => {
-        e.preventDefault()
+    const handlePasswordChange = useCallback(async (event: React.FormEvent) => {
+        event.preventDefault()
         setPwMessage(null)
 
         if (newPassword !== confirmPassword) {
             setPwMessage({ type: 'error', text: '新密碼與確認密碼不一致' })
             return
         }
+
         if (newPassword.length < 8) {
             setPwMessage({ type: 'error', text: '新密碼長度至少 8 個字元' })
             return
         }
-        if (!/[A-Z]/.test(newPassword)) {
-            setPwMessage({ type: 'error', text: '新密碼必須包含至少一個大寫字母' })
-            return
-        }
-        if (!/[0-9]/.test(newPassword)) {
-            setPwMessage({ type: 'error', text: '新密碼必須包含至少一個數字' })
+
+        if (!/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+            setPwMessage({ type: 'error', text: '新密碼必須包含至少一個大寫字母與數字' })
             return
         }
 
         setPwLoading(true)
+
         try {
-            const res = await fetch('/api/users/me/password', {
+            const response = await fetch('/api/users/me/password', {
                 method: 'POST',
                 credentials: 'include',
                 headers: {
@@ -115,7 +124,8 @@ export default function ProfilePage() {
                 },
                 body: JSON.stringify({ currentPassword, newPassword }),
             })
-            const json = await res.json()
+
+            const json = await response.json()
             if (json.ok) {
                 setPwMessage({ type: 'success', text: '密碼修改成功' })
                 setCurrentPassword('')
@@ -129,197 +139,189 @@ export default function ProfilePage() {
         } finally {
             setPwLoading(false)
         }
-    }, [currentPassword, newPassword, confirmPassword, getCsrfToken])
+    }, [confirmPassword, currentPassword, getCsrfToken, newPassword])
 
     if (loading) {
         return (
-            <main className="min-h-screen bg-bg-base flex items-center justify-center">
-                <Loader2 className="size-8 animate-spin text-text-muted" />
-            </main>
+            <div className="flex min-h-[50vh] items-center justify-center">
+                <Loader2 className="size-8 animate-spin text-primary-base" />
+            </div>
         )
     }
 
     if (error || !user) {
         return (
-            <main className="min-h-screen bg-bg-base px-4 py-16">
-                <div className="max-w-md mx-auto text-center space-y-4">
-                    <AlertCircle className="size-12 text-red-400 mx-auto" />
-                    <p className="text-text-muted">{error || '請先登入'}</p>
-                </div>
-            </main>
+            <div className="notice notice-error" role="alert">
+                <p className="text-sm font-medium text-text-base">{error || '請先登入'}</p>
+            </div>
         )
     }
 
     return (
-        <main className="min-h-screen bg-bg-base px-4 py-8 md:py-12">
-            <div className="max-w-2xl mx-auto space-y-8">
-                {/* Header */}
-                <header className="space-y-2">
-                    <h1 className="text-3xl font-heading font-bold text-text-base tracking-tight flex items-center gap-3">
-                        <User className="size-8 text-primary-base" />
-                        個人資料
-                    </h1>
-                </header>
+        <div className="space-y-6">
+            <PageHeader
+                eyebrow="Account"
+                title="讓帳戶資訊與學習偏好維持在同一個編輯式頁面裡。"
+                description="Profile 頁保留 Notion 式節奏：先看身份與角色，再處理安全設定，不再把資訊拆成互不相干的卡片堆。"
+                meta={(
+                    <>
+                        <span className="pill">{user.role}</span>
+                        <span className="pill">{user._count.questionRecords} 次作答</span>
+                    </>
+                )}
+            />
 
-                {/* User Info Card */}
-                <div className="card p-6 space-y-5">
-                    {/* Email */}
-                    <div className="flex items-center gap-3">
-                        <Mail className="size-5 text-text-muted" />
-                        <div>
-                            <p className="text-xs text-text-muted">電子郵件</p>
-                            <p className="text-text-base font-medium">{user.email}</p>
+            <div className="page-grid-with-rail">
+                <div className="space-y-6">
+                    <SectionCard title="帳戶資訊" description="更新姓名、查看角色與加入時間。">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <InfoBlock icon={<Mail className="size-4" />} label="電子郵件" value={user.email} />
+                            <InfoBlock
+                                icon={<BarChart3 className="size-4" />}
+                                label="角色"
+                                value={user.role}
+                            />
+                            <InfoBlock
+                                icon={<Calendar className="size-4" />}
+                                label="加入日期"
+                                value={new Date(user.createdAt).toLocaleDateString('zh-TW')}
+                            />
+                            <InfoBlock
+                                icon={<BarChart3 className="size-4" />}
+                                label="作答紀錄"
+                                value={`${user._count.questionRecords} 次`}
+                            />
                         </div>
-                    </div>
 
-                    {/* Name */}
-                    <div className="flex items-center gap-3">
-                        <User className="size-5 text-text-muted" />
-                        <div className="flex-1">
-                            <p className="text-xs text-text-muted">姓名</p>
+                        <div className="rounded-[24px] border border-border-base bg-bg-surface p-4">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div className="space-y-1">
+                                    <p className="text-sm font-semibold text-text-base">姓名</p>
+                                    {!editingName ? (
+                                        <p className="text-sm leading-7 text-text-muted">{user.name || '尚未設定姓名'}</p>
+                                    ) : null}
+                                </div>
+                                {!editingName ? (
+                                    <Button variant="secondary" size="sm" onClick={() => setEditingName(true)}>
+                                        <User className="size-4" />
+                                        編輯姓名
+                                    </Button>
+                                ) : null}
+                            </div>
+
                             {editingName ? (
-                                <div className="flex items-center gap-2 mt-1">
+                                <div className="mt-4 flex flex-col gap-3 md:flex-row">
                                     <input
                                         type="text"
                                         value={nameValue}
-                                        onChange={e => setNameValue(e.target.value)}
-                                        className="flex-1 bg-bg-surface border border-border-base rounded-lg px-3 py-1.5 text-text-base text-sm focus:outline-none focus:border-primary-base focus:ring-1 focus:ring-primary-base"
+                                        onChange={(event) => setNameValue(event.target.value)}
+                                        className="input flex-1"
                                         autoFocus
                                     />
-                                    <button
-                                        onClick={handleNameSave}
-                                        disabled={nameLoading}
-                                        className="text-sm text-primary-base hover:text-primary-base/80 font-medium"
-                                    >
-                                        {nameLoading ? <Loader2 className="size-4 animate-spin" /> : '儲存'}
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            setEditingName(false)
-                                            setNameValue(user.name ?? '')
-                                        }}
-                                        className="text-sm text-text-muted hover:text-text-base"
-                                    >
-                                        取消
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <Button size="sm" isLoading={nameLoading} onClick={handleNameSave}>
+                                            {!nameLoading ? '儲存' : null}
+                                        </Button>
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => {
+                                                setEditingName(false)
+                                                setNameValue(user.name ?? '')
+                                            }}
+                                        >
+                                            取消
+                                        </Button>
+                                    </div>
                                 </div>
-                            ) : (
-                                <p className="text-text-base font-medium">
-                                    {user.name || '（未設定）'}
-                                    <button
-                                        onClick={() => setEditingName(true)}
-                                        className="ml-2 text-xs text-primary-base hover:underline"
-                                    >
-                                        編輯
-                                    </button>
-                                </p>
-                            )}
+                            ) : null}
                         </div>
-                    </div>
+                    </SectionCard>
 
-                    {/* Role */}
-                    <div className="flex items-center gap-3">
-                        <BarChart3 className="size-5 text-text-muted" />
-                        <div>
-                            <p className="text-xs text-text-muted">角色</p>
-                            <span className="inline-block text-xs font-semibold text-primary-base bg-primary-base/10 rounded-full px-2.5 py-0.5 mt-0.5">
-                                {user.role}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Join date */}
-                    <div className="flex items-center gap-3">
-                        <Calendar className="size-5 text-text-muted" />
-                        <div>
-                            <p className="text-xs text-text-muted">加入日期</p>
-                            <p className="text-text-base font-medium">
-                                {new Date(user.createdAt).toLocaleDateString('zh-TW')}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="flex items-center gap-3">
-                        <BarChart3 className="size-5 text-text-muted" />
-                        <div>
-                            <p className="text-xs text-text-muted">作答紀錄</p>
-                            <p className="text-text-base font-medium">
-                                {user._count.questionRecords} 次
-                            </p>
-                        </div>
-                    </div>
+                    <SectionCard title="安全設定" description="修改密碼時，會立即更新登入保護條件。">
+                        {pwMessage ? (
+                            <div
+                                className={cn(
+                                    'notice',
+                                    pwMessage.type === 'success' ? 'notice-success' : 'notice-error',
+                                )}
+                                role="status"
+                                aria-live="polite"
+                            >
+                                <p className="text-sm font-medium text-text-base">{pwMessage.text}</p>
+                            </div>
+                        ) : null}
+                        <form onSubmit={handlePasswordChange} className="space-y-5">
+                            <Field label="目前密碼" htmlFor={currentPasswordId} required>
+                                <input
+                                    id={currentPasswordId}
+                                    type="password"
+                                    value={currentPassword}
+                                    onChange={(event) => setCurrentPassword(event.target.value)}
+                                    className="input"
+                                    placeholder="輸入目前密碼"
+                                    required
+                                />
+                            </Field>
+                            <Field label="新密碼" htmlFor={newPasswordId} required hint="至少 8 個字元，包含一個大寫字母與數字。">
+                                <input
+                                    id={newPasswordId}
+                                    type="password"
+                                    value={newPassword}
+                                    onChange={(event) => setNewPassword(event.target.value)}
+                                    className="input"
+                                    placeholder="設定新密碼"
+                                    required
+                                />
+                            </Field>
+                            <Field label="確認新密碼" htmlFor={confirmPasswordId} required>
+                                <input
+                                    id={confirmPasswordId}
+                                    type="password"
+                                    value={confirmPassword}
+                                    onChange={(event) => setConfirmPassword(event.target.value)}
+                                    className="input"
+                                    placeholder="再次輸入新密碼"
+                                    required
+                                />
+                            </Field>
+                            <Button type="submit" size="lg" className="w-full md:w-auto" isLoading={pwLoading}>
+                                {!pwLoading ? '更新密碼' : null}
+                            </Button>
+                        </form>
+                    </SectionCard>
                 </div>
 
-                {/* Password Change */}
-                <div className="card p-6 space-y-5">
-                    <h2 className="text-lg font-heading font-semibold text-text-base flex items-center gap-2">
-                        <Lock className="size-5 text-primary-base" />
-                        修改密碼
-                    </h2>
-
-                    {pwMessage && (
-                        <div
-                            className={cn(
-                                'p-3 rounded-lg text-sm font-medium flex items-center gap-2',
-                                pwMessage.type === 'success'
-                                    ? 'bg-green-500/10 border border-green-500/20 text-green-400'
-                                    : 'bg-red-500/10 border border-red-500/20 text-red-400'
-                            )}
-                        >
-                            {pwMessage.type === 'success' ? (
-                                <Check className="size-4" />
-                            ) : (
-                                <AlertCircle className="size-4" />
-                            )}
-                            {pwMessage.text}
+                <aside className="page-rail">
+                    <SectionCard title="帳戶摘要" description="這裡保留最常回頭確認的三件事。">
+                        <div className="space-y-3 text-sm leading-7 text-text-muted">
+                            <p>目前身份：<span className="font-semibold text-text-base">{user.role}</span></p>
+                            <p>資料建立於：<span className="font-semibold text-text-base">{new Date(user.createdAt).toLocaleDateString('zh-TW')}</span></p>
+                            <p>如果你常切換螢幕尺寸，字體比例與主題偏好會保留在本機偏好裡。</p>
                         </div>
-                    )}
-
-                    <form onSubmit={handlePasswordChange} className="space-y-4">
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-text-muted">目前密碼</label>
-                            <input
-                                type="password"
-                                value={currentPassword}
-                                onChange={e => setCurrentPassword(e.target.value)}
-                                required
-                                className="w-full bg-bg-surface border border-border-base rounded-xl px-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-primary-base focus:ring-1 focus:ring-primary-base transition-all"
-                                placeholder="輸入目前密碼"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-text-muted">新密碼</label>
-                            <input
-                                type="password"
-                                value={newPassword}
-                                onChange={e => setNewPassword(e.target.value)}
-                                required
-                                className="w-full bg-bg-surface border border-border-base rounded-xl px-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-primary-base focus:ring-1 focus:ring-primary-base transition-all"
-                                placeholder="至少 8 字元，含大寫字母與數字"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-text-muted">確認新密碼</label>
-                            <input
-                                type="password"
-                                value={confirmPassword}
-                                onChange={e => setConfirmPassword(e.target.value)}
-                                required
-                                className="w-full bg-bg-surface border border-border-base rounded-xl px-4 py-2.5 text-text-base placeholder-text-muted focus:outline-none focus:border-primary-base focus:ring-1 focus:ring-primary-base transition-all"
-                                placeholder="再次輸入新密碼"
-                            />
-                        </div>
-                        <button
-                            type="submit"
-                            disabled={pwLoading}
-                            className="w-full bg-primary-base hover:bg-primary-base/90 text-white font-medium py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-70"
-                        >
-                            {pwLoading ? <Loader2 className="size-4 animate-spin" /> : '修改密碼'}
-                        </button>
-                    </form>
-                </div>
+                    </SectionCard>
+                </aside>
             </div>
-        </main>
+        </div>
+    )
+}
+
+function InfoBlock({
+    icon,
+    label,
+    value,
+}: {
+    icon: ReactNode
+    label: string
+    value: string
+}) {
+    return (
+        <div className="rounded-[24px] border border-border-base bg-bg-surface p-4">
+            <div className="flex items-center gap-2 text-text-subtle">
+                {icon}
+                <span className="text-sm font-medium">{label}</span>
+            </div>
+            <p className="mt-3 text-base font-semibold text-text-base">{value}</p>
+        </div>
     )
 }

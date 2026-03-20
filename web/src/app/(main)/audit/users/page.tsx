@@ -1,39 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-    Search,
-    Loader2,
     AlertTriangle,
-    Shield,
-    ShieldCheck,
-    ShieldAlert,
-    Users,
     ChevronDown,
+    Loader2,
+    Search,
+    Shield,
+    ShieldAlert,
+    ShieldCheck,
+    Users,
 } from "lucide-react";
 import {
+    type AdminUser,
+    type AdminUserListResponse,
     fetchAdminUsers,
     updateAdminUserRole,
-    AdminUserListResponse,
-    AdminUser,
 } from "@/lib/apiClient";
+import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { SectionCard } from "@/components/ui/SectionCard";
 
 const ROLE_CONFIG = {
     ADMIN: {
         label: "管理員",
         icon: ShieldAlert,
-        badgeClass: "bg-red-500/15 text-red-400",
+        badgeClass: "bg-danger-muted text-danger-base",
+        description: "完整系統管理權限",
     },
     MODERATOR: {
         label: "審核員",
         icon: ShieldCheck,
-        badgeClass: "bg-amber-500/15 text-amber-400",
+        badgeClass: "bg-warning-muted text-warning-base",
+        description: "題目審核與編輯權限",
     },
     USER: {
         label: "一般用戶",
         icon: Shield,
-        badgeClass: "bg-primary-base/15 text-text-muted",
+        badgeClass: "bg-primary-muted text-primary-base",
+        description: "僅限練習與查看",
     },
 } as const;
 
@@ -62,130 +68,98 @@ export default function UsersManagerPage() {
 
     const users = data?.users ?? [];
     const pagination = data?.pagination;
-
-    // Stats
-    const roleCounts = users.reduce<Record<string, number>>((acc, u) => {
-        acc[u.role] = (acc[u.role] || 0) + 1;
+    const roleCounts = users.reduce<Record<string, number>>((acc, user) => {
+        acc[user.role] = (acc[user.role] || 0) + 1;
         return acc;
     }, {});
 
     return (
-        <main className="min-h-screen bg-bg-base pb-12 transition-colors duration-300">
-            <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto text-text-base">
-                {/* Header */}
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-purple-500">
-                            用戶管理中心
-                        </h1>
-                        <p className="text-text-muted mt-1">
-                            管理系統用戶帳號與角色權限
-                        </p>
-                    </div>
-                </div>
-
-                {/* Search */}
-                <div className="flex gap-4 mb-6">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-text-muted" />
-                        <input
-                            type="text"
-                            placeholder="搜尋 Email 或姓名..."
-                            className="w-full pl-10 pr-4 py-2 bg-bg-surface border border-border-base rounded-lg text-sm text-text-base placeholder-text-muted focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none"
-                            value={search}
-                            onChange={(e) => {
-                                setSearch(e.target.value);
-                                setPage(1);
-                            }}
-                        />
-                    </div>
-                </div>
-
-                {/* Stats */}
-                {pagination && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div className="bg-bg-surface/50 border border-border-base rounded-xl p-4">
-                            <div className="text-2xl font-bold text-text-base">
-                                {pagination.total}
-                            </div>
-                            <div className="text-xs text-text-muted mt-1">
-                                用戶總數
-                            </div>
-                        </div>
-                        {(["ADMIN", "MODERATOR", "USER"] as const).map(
-                            (role) => {
-                                const config = ROLE_CONFIG[role];
-                                return (
-                                    <div
-                                        key={role}
-                                        className="bg-bg-surface/50 border border-border-base rounded-xl p-4"
-                                    >
-                                        <div className="text-2xl font-bold text-text-base">
-                                            {roleCounts[role] || 0}
-                                        </div>
-                                        <div className="text-xs text-text-muted mt-1 flex items-center gap-1">
-                                            <config.icon className="h-3 w-3" />
-                                            {config.label} (本頁)
-                                        </div>
-                                    </div>
-                                );
-                            }
-                        )}
-                    </div>
+        <div className="space-y-6 text-text-base">
+            <PageHeader
+                eyebrow="Audit / Users"
+                title="用戶管理中心"
+                description="管理系統用戶帳號與角色權限，並把搜尋、統計與角色調整放進同一套工作區節奏。"
+                meta={(
+                    <>
+                        <span className="pill">第 {page} 頁</span>
+                        <span className="pill">搜尋即時生效</span>
+                    </>
                 )}
+            />
 
-                {/* Table */}
-                <div className="bg-bg-surface/50 rounded-xl overflow-hidden border border-border-base">
-                    <table className="w-full text-left text-sm whitespace-nowrap">
-                        <thead className="bg-bg-surface/80 text-text-muted border-b border-border-base">
+            <SectionCard title="搜尋">
+                <div className="relative max-w-md">
+                    <Search className="absolute left-3 top-3.5 h-4 w-4 text-text-muted" />
+                    <input
+                        type="text"
+                        placeholder="搜尋 Email 或姓名..."
+                        className="input pl-10"
+                        value={search}
+                        onChange={(event) => {
+                            setSearch(event.target.value);
+                            setPage(1);
+                        }}
+                    />
+                </div>
+            </SectionCard>
+
+            {pagination ? (
+                <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    <SectionCard className="space-y-2">
+                        <div className="text-2xl font-bold text-text-base">{pagination.total}</div>
+                        <div className="text-xs text-text-muted">用戶總數</div>
+                    </SectionCard>
+                    {(["ADMIN", "MODERATOR", "USER"] as const).map((role) => {
+                        const config = ROLE_CONFIG[role];
+                        const RoleIcon = config.icon;
+                        return (
+                            <SectionCard key={role} className="space-y-2">
+                                <div className="text-2xl font-bold text-text-base">{roleCounts[role] || 0}</div>
+                                <div className="flex items-center gap-1 text-xs text-text-muted">
+                                    <RoleIcon className="h-3 w-3" />
+                                    {config.label} (本頁)
+                                </div>
+                            </SectionCard>
+                        );
+                    })}
+                </section>
+            ) : null}
+
+            <SectionCard
+                title="用戶列表"
+                description="查看目前權限與作答紀錄，並在右側快速調整角色。"
+                className="!p-0 overflow-hidden"
+            >
+                <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm whitespace-nowrap">
+                        <thead className="border-b border-border-base bg-bg-surface/80 text-text-muted">
                             <tr>
-                                <th className="px-6 py-4 font-medium">
-                                    用戶
-                                </th>
-                                <th className="px-6 py-4 font-medium">
-                                    角色
-                                </th>
-                                <th className="px-6 py-4 font-medium text-right">
-                                    作答紀錄
-                                </th>
-                                <th className="px-6 py-4 font-medium">
-                                    註冊時間
-                                </th>
-                                <th className="px-6 py-4 font-medium text-right">
-                                    操作
-                                </th>
+                                <th className="px-6 py-4 font-medium">用戶</th>
+                                <th className="px-6 py-4 font-medium">角色</th>
+                                <th className="px-6 py-4 text-right font-medium">作答紀錄</th>
+                                <th className="px-6 py-4 font-medium">註冊時間</th>
+                                <th className="px-6 py-4 text-right font-medium">操作</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border-base">
                             {isLoading ? (
                                 <tr>
-                                    <td
-                                        colSpan={5}
-                                        className="px-6 py-12 text-center text-text-muted"
-                                    >
-                                        <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                                    <td colSpan={5} className="px-6 py-12 text-center text-text-muted">
+                                        <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
                                         載入中...
                                     </td>
                                 </tr>
                             ) : isError ? (
                                 <tr>
-                                    <td
-                                        colSpan={5}
-                                        className="px-6 py-12 text-center text-red-400"
-                                    >
-                                        <AlertTriangle className="h-6 w-6 mx-auto mb-2 opacity-80" />
-                                        取得資料失敗：
-                                        {error?.message ||
-                                            "未授權或發生未知錯誤"}
+                                    <td colSpan={5} className="px-6 py-12 text-center text-danger-base">
+                                        <AlertTriangle className="mx-auto mb-2 h-6 w-6 opacity-80" />
+                                        取得資料失敗：{error?.message || "未授權或發生未知錯誤"}
                                     </td>
                                 </tr>
                             ) : users.length === 0 ? (
                                 <tr>
-                                    <td
-                                        colSpan={5}
-                                        className="px-6 py-12 text-center text-text-muted"
-                                    >
-                                        <Users className="h-6 w-6 mx-auto mb-2 opacity-60" />
+                                    <td colSpan={5} className="px-6 py-12 text-center text-text-muted">
+                                        <Users className="mx-auto mb-2 h-6 w-6 opacity-60" />
                                         沒有找到符合條件的用戶
                                     </td>
                                 </tr>
@@ -193,29 +167,19 @@ export default function UsersManagerPage() {
                                 users.map((user) => {
                                     const config = ROLE_CONFIG[user.role];
                                     const RoleIcon = config.icon;
+
                                     return (
-                                        <tr
-                                            key={user.id}
-                                            className="hover:bg-bg-surface transition-colors"
-                                        >
+                                        <tr key={user.id} className="transition-colors hover:bg-bg-surface">
                                             <td className="px-6 py-3">
                                                 <div>
                                                     <div className="font-medium text-text-base">
-                                                        {user.name || (
-                                                            <span className="text-text-muted italic">
-                                                                未設定
-                                                            </span>
-                                                        )}
+                                                        {user.name || <span className="italic text-text-muted">未設定</span>}
                                                     </div>
-                                                    <div className="text-xs text-text-muted">
-                                                        {user.email}
-                                                    </div>
+                                                    <div className="text-xs text-text-muted">{user.email}</div>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-3">
-                                                <span
-                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${config.badgeClass}`}
-                                                >
+                                                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${config.badgeClass}`}>
                                                     <RoleIcon className="h-3 w-3" />
                                                     {config.label}
                                                 </span>
@@ -223,10 +187,8 @@ export default function UsersManagerPage() {
                                             <td className="px-6 py-3 text-right text-text-muted">
                                                 {user._count.questionRecords}
                                             </td>
-                                            <td className="px-6 py-3 text-text-muted text-xs">
-                                                {new Date(
-                                                    user.createdAt
-                                                ).toLocaleDateString("zh-TW", {
+                                            <td className="px-6 py-3 text-xs text-text-muted">
+                                                {new Date(user.createdAt).toLocaleDateString("zh-TW", {
                                                     year: "numeric",
                                                     month: "2-digit",
                                                     day: "2-digit",
@@ -234,10 +196,8 @@ export default function UsersManagerPage() {
                                             </td>
                                             <td className="px-6 py-3 text-right">
                                                 <button
-                                                    onClick={() =>
-                                                        setEditingUser(user)
-                                                    }
-                                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text-base hover:bg-bg-base rounded-lg transition"
+                                                    onClick={() => setEditingUser(user)}
+                                                    className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-text-muted transition hover:bg-bg-base hover:text-text-base"
                                                 >
                                                     變更角色
                                                     <ChevronDown className="h-3 w-3" />
@@ -251,52 +211,47 @@ export default function UsersManagerPage() {
                     </table>
                 </div>
 
-                {/* Pagination */}
-                {pagination && pagination.totalPages > 1 && (
-                    <div className="flex justify-center gap-2 pt-4">
+                {pagination && pagination.totalPages > 1 ? (
+                    <div className="flex justify-center gap-2 border-t border-border-base px-6 py-4">
                         <button
                             disabled={page === 1}
-                            onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            className="px-3 py-1 bg-bg-surface rounded disabled:opacity-50"
+                            onClick={() => setPage((current) => Math.max(1, current - 1))}
+                            className="btn-secondary disabled:opacity-50"
                         >
                             上一頁
                         </button>
-                        <span className="px-3 py-1 text-text-muted">
+                        <span className="px-3 py-2 text-sm text-text-muted">
                             {page} / {pagination.totalPages}
                         </span>
                         <button
                             disabled={page === pagination.totalPages}
-                            onClick={() => setPage((p) => p + 1)}
-                            className="px-3 py-1 bg-bg-surface rounded disabled:opacity-50"
+                            onClick={() => setPage((current) => current + 1)}
+                            className="btn-secondary disabled:opacity-50"
                         >
                             下一頁
                         </button>
                     </div>
-                )}
+                ) : null}
+            </SectionCard>
 
-                {/* Role Change Modal */}
-                {editingUser && (
-                    <RoleChangeModal
-                        user={editingUser}
-                        onClose={() => setEditingUser(null)}
-                        onConfirm={(role) =>
-                            roleMutation.mutate({
-                                userId: editingUser.id,
-                                role,
-                            })
-                        }
-                        isPending={roleMutation.isPending}
-                        error={roleMutation.error?.message}
-                    />
-                )}
-            </div>
-        </main>
+            {editingUser ? (
+                <RoleChangeModal
+                    user={editingUser}
+                    onClose={() => setEditingUser(null)}
+                    onConfirm={(role) =>
+                        roleMutation.mutate({
+                            userId: editingUser.id,
+                            role,
+                        })
+                    }
+                    isPending={roleMutation.isPending}
+                    error={roleMutation.error?.message}
+                />
+            ) : null}
+        </div>
     );
 }
 
-// ---------------------------------------------------------------------------
-// Role Change Modal
-// ---------------------------------------------------------------------------
 function RoleChangeModal({
     user,
     onClose,
@@ -314,93 +269,65 @@ function RoleChangeModal({
     const isChanged = selectedRole !== user.role;
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-bg-surface border border-violet-500/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="dialog-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="dialog-panel w-full max-w-md overflow-hidden border border-border-base">
                 <div className="p-6">
-                    <h2 className="text-xl font-bold text-text-base mb-1">
-                        變更用戶角色
-                    </h2>
-                    <p className="text-sm text-text-muted mb-6">
+                    <h2 className="text-xl font-bold text-text-base">變更用戶角色</h2>
+                    <p className="mb-6 mt-2 text-sm text-text-muted">
                         {user.name || user.email}
-                        <span className="text-text-muted/60 ml-2 text-xs">
-                            ({user.email})
-                        </span>
+                        <span className="ml-2 text-xs text-text-subtle">({user.email})</span>
                     </p>
 
                     <div className="space-y-2">
-                        {(["USER", "MODERATOR", "ADMIN"] as const).map(
-                            (role) => {
-                                const config = ROLE_CONFIG[role];
-                                const Icon = config.icon;
-                                const isSelected = selectedRole === role;
-                                const isCurrent = user.role === role;
-                                return (
-                                    <button
-                                        key={role}
-                                        onClick={() => setSelectedRole(role)}
-                                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition ${
-                                            isSelected
-                                                ? "border-violet-500 bg-violet-500/10"
-                                                : "border-border-base hover:border-text-muted/30 bg-bg-surface/50"
-                                        }`}
-                                    >
-                                        <Icon
-                                            className={`h-5 w-5 ${
-                                                isSelected
-                                                    ? "text-violet-400"
-                                                    : "text-text-muted"
-                                            }`}
-                                        />
-                                        <div className="flex-1">
-                                            <div className="text-sm font-medium text-text-base">
-                                                {config.label}
-                                                <span className="text-text-muted/60 text-xs ml-2">
-                                                    {role}
-                                                </span>
-                                            </div>
-                                            <div className="text-xs text-text-muted">
-                                                {role === "ADMIN" &&
-                                                    "完整系統管理權限"}
-                                                {role === "MODERATOR" &&
-                                                    "題目審核與編輯權限"}
-                                                {role === "USER" &&
-                                                    "僅限練習與查看"}
-                                            </div>
+                        {(["USER", "MODERATOR", "ADMIN"] as const).map((role) => {
+                            const config = ROLE_CONFIG[role];
+                            const RoleIcon = config.icon;
+                            const isSelected = selectedRole === role;
+                            const isCurrent = user.role === role;
+
+                            return (
+                                <button
+                                    key={role}
+                                    onClick={() => setSelectedRole(role)}
+                                    className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition ${
+                                        isSelected
+                                            ? "border-primary-base bg-primary-muted/40"
+                                            : "border-border-base bg-bg-surface/50 hover:border-border-hover"
+                                    }`}
+                                >
+                                    <RoleIcon className={`h-5 w-5 ${isSelected ? "text-primary-base" : "text-text-muted"}`} />
+                                    <div className="flex-1">
+                                        <div className="text-sm font-medium text-text-base">
+                                            {config.label}
+                                            <span className="ml-2 text-xs text-text-subtle">{role}</span>
                                         </div>
-                                        {isCurrent && (
-                                            <span className="text-xs text-text-muted px-2 py-0.5 rounded bg-bg-base/50">
-                                                目前
-                                            </span>
-                                        )}
-                                    </button>
-                                );
-                            }
-                        )}
+                                        <div className="text-xs text-text-muted">{config.description}</div>
+                                    </div>
+                                    {isCurrent ? (
+                                        <span className="rounded bg-bg-base/50 px-2 py-0.5 text-xs text-text-muted">
+                                            目前
+                                        </span>
+                                    ) : null}
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    {error && (
-                        <p className="text-sm text-red-400 mt-4">{error}</p>
-                    )}
+                    {error ? <p className="mt-4 text-sm text-danger-base">{error}</p> : null}
                 </div>
 
-                <div className="px-6 py-4 bg-bg-base/50 flex justify-end gap-3 border-t border-border-base">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm text-text-muted hover:text-text-base transition"
-                    >
+                <div className="flex justify-end gap-3 border-t border-border-base bg-bg-base/50 px-6 py-4">
+                    <button onClick={onClose} className="px-4 py-2 text-sm text-text-muted transition hover:text-text-base">
                         取消
                     </button>
-                    <button
-                        disabled={!isChanged || isPending}
+                    <Button
+                        disabled={!isChanged}
+                        isLoading={isPending}
                         onClick={() => onConfirm(selectedRole)}
-                        className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-semibold transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2 min-w-[100px] justify-center"
+                        className="min-w-[100px] justify-center"
                     >
-                        {isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            "確認變更"
-                        )}
-                    </button>
+                        {!isPending ? "確認變更" : null}
+                    </Button>
                 </div>
             </div>
         </div>

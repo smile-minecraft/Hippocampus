@@ -134,6 +134,12 @@ export const GenerateExplanationsJobSchema = z.object({
     model: ExplanationModelMode,
     /** Questions to generate explanations for (1–500) */
     questions: z.array(ExplanationQuestionSchema).min(1).max(500),
+    /** Flag set by API when user requests cancellation */
+    _cancelRequested: z.boolean().optional(),
+    /** Flag set by API when user pauses generation */
+    _paused: z.boolean().optional(),
+    /** ISO timestamp for when the job was paused */
+    _pausedAt: z.string().datetime().optional(),
 });
 
 export type GenerateExplanationsJobData = z.infer<
