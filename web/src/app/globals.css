@@ -370,7 +370,7 @@
   }
 
   .page-grid-with-rail {
-    @apply grid gap-6 xl:grid-cols-[minmax(0,860px)_320px] xl:items-start xl:justify-between;
+    @apply grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start;
   }
 
   .page-rail {

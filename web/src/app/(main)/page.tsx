@@ -54,12 +54,12 @@ export default function DashboardPage() {
       <PageHeader
         eyebrow="Workspace"
         title="把刷題、知識共筆與審核整理進同一個工作區。"
-        description="首頁不再只是入口，而是一個編輯式儀表板。你可以從這裡進入知識庫、題目工作流與學習分析，也能在同樣的 Rose Pine 結構裡保持閱讀節奏。"
+        description="首頁不再只是入口，而是一個編輯式儀表板。你可以從這裡進入知識庫、題目工作流與學習分析，並用一致的互動節奏維持專注。"
         meta={(
           <>
-            <span className="pill">Notion-inspired layout</span>
-            <span className="pill">Rose Pine tokens</span>
-            <span className="pill">Source Han Serif</span>
+            <span className="pill">單頁工作流</span>
+            <span className="pill">一致操作體驗</span>
+            <span className="pill">閱讀優先排版</span>
           </>
         )}
       />

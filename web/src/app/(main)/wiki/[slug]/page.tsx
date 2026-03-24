@@ -55,7 +55,7 @@ export default async function WikiPage({ params }: WikiPageProps) {
                     description="閱讀條目時，右側 contextual rail 會跟著目前段落同步切換，讓知識點與考題回到同一個視窗節奏裡。"
                     meta={(
                         <>
-                            <span className="pill">Rose Pine article surface</span>
+                            <span className="pill">閱讀模式</span>
                             <span className="pill">Context-aware questions</span>
                         </>
                     )}

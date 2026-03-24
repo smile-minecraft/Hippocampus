@@ -31,12 +31,12 @@ export function AuthPanel({
                             </div>
                         </Link>
                         <div className="space-y-4">
-                            <p className="page-header-eyebrow">Notion-styled medical knowledge system</p>
+                            <p className="page-header-eyebrow">Medical knowledge workspace</p>
                             <h1 className="font-heading text-5xl font-bold leading-tight tracking-tight text-text-base">
                                 用低噪音的工作台整理題庫、知識與審核流程。
                             </h1>
                             <p className="max-w-xl text-base leading-8 text-text-muted">
-                                新版介面將刷題、共筆、解析與審核收進同一個 Rose Pine 工作區裡，讓資訊密度與閱讀節奏保持平衡。
+                                新版介面將刷題、共筆、解析與審核收進同一個工作區裡，讓資訊密度與閱讀節奏保持平衡。
                             </p>
                         </div>
                     </div>

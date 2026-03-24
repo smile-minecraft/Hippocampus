@@ -196,7 +196,7 @@ export default function ExamDetailPage() {
                 <PageHeader
                     eyebrow="Audit / Exam Detail"
                     title={`題庫明細：${title}`}
-                    description="這裡保留工作站密度，但表面系統已統一成 Rose Pine shell。批次操作會走共享確認流程，不再跳出原生 alert。"
+                    description="這裡保留工作站密度，並統一批次操作與確認流程，不再跳出原生 alert。"
                     actions={(
                         <Link href="/audit/exams" className="btn-secondary">
                             返回題庫列表

@@ -218,7 +218,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
       - NODE_ENV=production
-    command: "npm run worker:parser"
+    command: "npm run worker:parser:prod"
     healthcheck:
       # Worker health check - checks if process is running and responsive
       test: [ "CMD-SHELL", "pgrep -f 'worker:parser' || exit 1" ]
@@ -264,7 +264,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-hippocampus}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-hippocampus}?schema=public
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=production
-    command: "npm run worker:explanation"
+    command: "npm run worker:explanation:prod"
     healthcheck:
       # Worker health check - checks if process is running
       test: [ "CMD-SHELL", "pgrep -f 'worker:explanation' || exit 1" ]
@@ -304,10 +304,14 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-example.com}
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - nginx_cache:/var/cache/nginx
+    command: >
+      /bin/sh -c "envsubst '$${DOMAIN}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
     healthcheck:
       test: [ "CMD", "wget", "-qO-", "http://localhost/health" ]
       interval: 10s

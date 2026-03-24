@@ -448,7 +448,7 @@ function Sidebar({
                             {!collapsed ? (
                                 <span className="pill">
                                     <BrainCircuit className="size-3.5" />
-                                    Rose Pine
+                                    主題已同步
                                 </span>
                             ) : null}
                         </div>

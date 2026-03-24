@@ -19,7 +19,7 @@ export default function AuditPage() {
                 <PageHeader
                     eyebrow="Audit Workspace"
                     title="審核工作站把上傳、裁切、校對與發布接成同一條工作流。"
-                    description="這裡保留高密度操作，但整體排版改成更安靜的 Notion 式節奏，讓大量資訊不再彼此搶焦點。"
+                    description="這裡保留高密度操作，同時用更低干擾的版面組織資訊，讓大量內容不再彼此搶焦點。"
                     actions={(
                         <>
                             <Link href="/audit/users" className="btn-secondary">

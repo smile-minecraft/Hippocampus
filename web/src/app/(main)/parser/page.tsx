@@ -175,7 +175,7 @@ export default function ParserUploadPage() {
             <PageHeader
                 eyebrow="Parser Workspace"
                 title="把考卷文件送進解析流程，接著直接進入可編輯的草稿審核。"
-                description="上傳與等待狀態都放在同一個頁面裡。這裡沿用 Notion 式的低噪音排版，但保留解析工作站需要的明確狀態回饋。"
+                description="上傳與等待狀態都放在同一個頁面裡。版面維持低干擾，但保留解析工作站需要的明確狀態回饋。"
                 meta={(
                     <>
                         <span className="pill">支援 PDF / DOCX</span>

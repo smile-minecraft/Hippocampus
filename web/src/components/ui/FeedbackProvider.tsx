@@ -32,7 +32,7 @@ interface ConfirmState {
     tone?: ConfirmTone
 }
 
-interface ConfirmOptions extends ConfirmState {}
+type ConfirmOptions = ConfirmState
 
 interface NotifyOptions {
     tone?: NoticeTone
@@ -47,6 +47,22 @@ interface FeedbackContextValue {
 
 const FeedbackContext = createContext<FeedbackContextValue | null>(null)
 
+function createNoticeId(): string {
+    const cryptoApi = globalThis.crypto
+
+    if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+        return cryptoApi.randomUUID()
+    }
+
+    if (cryptoApi && typeof cryptoApi.getRandomValues === 'function') {
+        const bytes = new Uint8Array(16)
+        cryptoApi.getRandomValues(bytes)
+        return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    }
+
+    return `notice-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 export function FeedbackProvider({ children }: { children: ReactNode }) {
     const [notices, setNotices] = useState<Notice[]>([])
     const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
@@ -58,7 +74,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
             : { tone: 'info' as const, ...options }
 
         const notice: Notice = {
-            id: crypto.randomUUID(),
+            id: createNoticeId(),
             tone: payload.tone,
             title: payload.title,
             description: payload.description,

@@ -85,7 +85,7 @@ export function QuizDashboard({ tagsData }: QuizDashboardProps) {
             <PageHeader
                 eyebrow="Quiz workspace"
                 title="先用閱讀式設定頁收斂範圍，再進入沉浸式作答。"
-                description="新版 quiz dashboard 保留原本的題數、難度與標籤邏輯，但把它們整理成更像 Notion block 的設定體驗。"
+                description="新版 quiz dashboard 保留原本的題數、難度與標籤邏輯，並把設定流程整理成更清楚、可快速掃讀的操作體驗。"
                 actions={(
                     <Link href="/quiz/history">
                         <Button variant="secondary" size="sm">

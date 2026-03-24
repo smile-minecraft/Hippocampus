@@ -320,7 +320,7 @@ export default function DraftReviewPage() {
             <PageHeader
                 eyebrow="Parser / Draft Review"
                 title="草稿審核：把 AI 解析結果整理成可直接入庫的題目。"
-                description="這個頁面保留 Notion 式的閱讀節奏，但表單密度仍然足夠高，方便你快速校對題幹、選項、詳解與標籤。"
+                description="這個頁面保留清晰的閱讀節奏，同時維持足夠的表單密度，方便你快速校對題幹、選項、詳解與標籤。"
                 actions={
                     <>
                         <Button variant="secondary" onClick={() => router.push("/parser")}>

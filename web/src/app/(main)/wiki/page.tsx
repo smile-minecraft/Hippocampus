@@ -122,7 +122,7 @@ export default async function WikiIndexPage({
                 </div>
 
                 <aside className="page-rail">
-                    <SectionCard title="閱讀規則" description="新版知識庫遵循 Notion 式閱讀節奏。">
+                    <SectionCard title="閱讀規則" description="新版知識庫採用分區式閱讀節奏。">
                         <div className="space-y-3 text-sm leading-7 text-text-muted">
                             <p>左邊是條目與段落，右邊是 contextual rail。</p>
                             <p>當你滾動到不同段落時，右側關聯題目會同步更新，不再停在初始 slug。</p>

@@ -162,7 +162,7 @@ export default function ProfilePage() {
             <PageHeader
                 eyebrow="Account"
                 title="讓帳戶資訊與學習偏好維持在同一個編輯式頁面裡。"
-                description="Profile 頁保留 Notion 式節奏：先看身份與角色，再處理安全設定，不再把資訊拆成互不相干的卡片堆。"
+                description="Profile 頁以清楚的資訊順序呈現：先看身份與角色，再處理安全設定，不再把資訊拆成互不相干的卡片堆。"
                 meta={(
                     <>
                         <span className="pill">{user.role}</span>

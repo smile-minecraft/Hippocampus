@@ -71,7 +71,7 @@ export default function RegisterPage() {
         <AuthPanel
             eyebrow="Create account"
             title="建立新工作區帳號"
-            description="註冊後會自動登入，並直接帶你進入新版 Notion 式工作區。"
+            description="註冊後會自動登入，並直接帶你進入整合刷題、共筆與審核的工作區。"
             footer={(
                 <p className="text-sm leading-7 text-text-muted">
                     已有帳號？{' '}
